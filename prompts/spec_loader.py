@@ -13,11 +13,23 @@ fence-depth counter (any ``` line toggles depth; the block is everything
 between the first 0->1 transition and the matching last 1->0 transition),
 not a naive "first ``` ... ``` pair" scan.
 """
+import os
 import re
 from pathlib import Path
 
 SPEC_PATH = Path(__file__).parent / "PROMPT_SPEC.md"
 SPECS_DIR = Path(__file__).parent / "specs"
+
+# [sync-needed] The two variables the kernel-lang-2x2 A100 probe manipulates
+# (CLAUDE.md "조작 변수"): the prompt's target-GPU line and the PTX .target
+# string. Parametrized via env vars instead of hand-editing PROMPT_SPEC.md's
+# hardcoded text so the primary sm_120 machine's prompts are byte-identical
+# by default (env vars unset -> these defaults). Discovered/added running the
+# A100 probe, 2026-08-20.
+DEFAULT_TARGET_GPU_LINE = "NVIDIA RTX PRO 6000 Blackwell (compute capability 12.0)"
+DEFAULT_PTX_TARGET = "sm_120"
+TARGET_GPU_LINE = os.environ.get("KERNEL2X2_TARGET_GPU_LINE", DEFAULT_TARGET_GPU_LINE)
+PTX_TARGET = os.environ.get("KERNEL2X2_PTX_TARGET", DEFAULT_PTX_TARGET)
 
 LANGUAGE_DISPLAY = {
     "cuda": "CUDA",
@@ -136,6 +148,8 @@ class PromptSpec:
         prompt = prompt.replace("{LANGUAGE}", display)
         prompt = prompt.replace("{LANGUAGE_BLOCK}", lang_block)
         prompt = prompt.replace("{REFERENCE_CODE}", reference_code)
+        prompt = prompt.replace("{TARGET_GPU_LINE}", TARGET_GPU_LINE)
+        prompt = prompt.replace("{PTX_TARGET}", PTX_TARGET)
         return prompt.strip("\n") + "\n"
 
     def build_repair_prompt(self, compiler_error: str) -> str:

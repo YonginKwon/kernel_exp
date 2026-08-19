@@ -12,7 +12,7 @@ Write a functionally equivalent GPU kernel in {LANGUAGE}.
 Requirements:
 - All tensor inputs and outputs are float16 (fp16). Accumulation precision is
   your choice unless the reference dictates otherwise.
-- Target GPU: NVIDIA RTX PRO 6000 Blackwell (compute capability 12.0).
+- Target GPU: {TARGET_GPU_LINE}.
 - Your kernel must be a drop-in replacement: same input shapes, same output
   shapes and dtype as the reference.
 - Output ONLY the complete {LANGUAGE} solution inside a single code block.
@@ -52,7 +52,7 @@ Python file defining ModelNew that calls your Triton kernel.
 
 ### PTX
 ```
-Write the complete kernel in raw PTX ISA (.target sm_120). Provide:
+Write the complete kernel in raw PTX ISA (.target {PTX_TARGET}). Provide:
 (1) the PTX module as a Python string constant, and
 (2) a ModelNew class that loads it via the provided ptx_harness API:
     module = ptx_load(PTX_SOURCE); ptx_launch(module, "kernel_name", grid, block, args).
