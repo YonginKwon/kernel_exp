@@ -61,7 +61,7 @@
   },
   "doc_ablation_subset_of_20": {
     "_comment": "RESEARCH_CONTEXT.md #5: doc-injection ablation runs on a 20-task subset. Placeholder selection -- 2-3 per family, weighted toward families most likely to show HRPL/LRPL gaps (matmul, conv, attention). Needs PI sign-off before use (CLAUDE.md rule 3: prompt/protocol changes need shared, documented treatment across all 4 languages).",
-    "status": "PROPOSED, not yet approved",
+    "status": "APPROVED (PI, 2026-08-20 -- conditional pre-approval granted 2026-08-20, conditions met same day: Triton correctness confirmed in the full run, gpt-oss CUDA compile-failure classification finalized). See SELECTION.md #4.3.",
     "tasks": [
       "1_Square_matrix_multiplication_",
       "3_Batched_matrix_multiplication",

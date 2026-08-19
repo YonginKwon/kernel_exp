@@ -114,7 +114,29 @@ Level 1 전체 100개 중 **37개** 선정 (목표 30–40개 충족).
 호출했을 때는 fp32 elementwise add가 정상 컴파일·실행됨(max_diff=0.000e+00)을
 2026-08-19에 직접 확인했다.
 
-### 4.2 doc_ablation_subset_of_20의 상태
+### 4.2 doc_ablation_subset_of_20의 상태 (2026-08-19 시점, 이후 §4.3에서 승인됨)
 
 아직 초안, PI 미승인. §1 표 참고 — 이번 결정 범위(§4.1, PROMPT_SPEC.md §6)에
 포함되지 않았다.
+
+### 4.3 doc_ablation_subset_of_20 승인 (PI, 2026-08-20)
+
+**조건부 사전 승인**: 본 실행(37과제×4언어×5샘플×2모델) 완료·전수검증
+(`scripts/verify_eval_completeness.py`, PASS) 후, PI가 "Triton 평가에서 정답이
+확인되고 gpt-oss CUDA 판정이 종결되면 문서 ablation 생성→평가를 추가 승인 없이
+진행하라"고 조건부 승인 (2026-08-20). 같은 날 두 조건 모두 충족:
+- Triton 정답 확인: 342/370 컴파일, **83/370 정답**(gpt-oss 59, Qwen 24) — 4개
+  언어 중 유일하게 유의미한 정답 신호.
+- gpt-oss CUDA 판정 종결: 184/185 컴파일 실패 분류 완료(cpp/cuda 함수명 불일치
+  44.0%, 존재하지 않는 `AT_DISPATCH_HALF_TYPES` 매크로발 연쇄 미정의 25.0% 등,
+  하니스 원인 0건 확정) + 컴파일 실패 로그 2000/4000자 캡을 20000자로 상향
+  (PI 승인, 판정 불변 — PROMPT_SPEC.md §7).
+
+**서브셋 승인 전 재확인 (이 세션에서 수행)**: `doc_ablation_subset_of_20`의 20개
+과제가 §1의 37과제 계열 분포를 비례적으로 반영하는지 검증 — 전 9개 계열에서
+37과제 기준 비율과 20과제 기준 비율의 차이가 5%p 이내(예: matmul 18.9%→20.0%,
+convolution 16.2%→20.0%, pooling 8.1%→5.0%), 20개 과제명 전부 `families`의
+기존 과제와 일치(불일치 0건). 층화 표집으로서 유효하다고 판단해 **승인**.
+`tasks/level1_subset.json`의 `doc_ablation_subset_of_20.status`를 "APPROVED"로
+갱신 — `scripts/generate.py`의 `--condition docinject` 거부 게이트가 이 필드를
+확인하므로, 이 갱신 자체가 실행을 여는 조건이다.
