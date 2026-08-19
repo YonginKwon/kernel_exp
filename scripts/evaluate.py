@@ -25,9 +25,17 @@ Backend dispatch:
   run_and_check_correctness helpers directly for everything else, so the
   correctness methodology (tolerance, seeding, trial count) is identical to
   the other 3 languages -- no separate "PTX-only" judgment logic anywhere.
+
+GPU exclusivity (CLAUDE.md rule 6, 2026-08-19, hard rule -- NO bypass flag):
+this script refuses to run at all if nvidia-smi shows any other process on
+the GPU (most likely a vLLM generation server left running). Generation and
+evaluation sharing a GPU would contaminate timing measurements; the rule is
+enforced even though this pilot build doesn't measure timing yet, so nobody
+has to remember to add the check later once timing does land.
 """
 import argparse
 import json
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -61,6 +69,43 @@ def find_samples(language=None, condition=None, model_dir=None, task=None, raw_d
         if model_dir and model_d != model_dir:
             continue
         yield p, json.loads(p.read_text())
+
+
+def assert_gpu_exclusive():
+    """CLAUDE.md rule 6: hard-refuse to run if the GPU has any other process
+    on it (typically a vLLM server left running from generation). No bypass
+    flag exists here on purpose -- do not add one; fix the actual conflict
+    (stop the vLLM server) instead."""
+    try:
+        mem_out = subprocess.run(
+            ["nvidia-smi", "--query-gpu=memory.used,utilization.gpu",
+             "--format=csv,noheader,nounits", "-i", "0"],
+            capture_output=True, text=True, timeout=10, check=True,
+        ).stdout.strip()
+        used_str, util_str = [x.strip() for x in mem_out.split(",")]
+        used, util = int(used_str), int(util_str)
+    except Exception as e:
+        print(f"[refuse] could not query nvidia-smi to verify GPU exclusivity: "
+              f"{type(e).__name__}: {e}. Refusing to run rather than assume the "
+              f"GPU is free.", file=sys.stderr)
+        sys.exit(1)
+
+    apps_out = subprocess.run(
+        ["nvidia-smi", "--query-compute-apps=pid,process_name,used_memory",
+         "--format=csv,noheader"],
+        capture_output=True, text=True, timeout=10,
+    ).stdout.strip()
+
+    if used > 500 or util > 5 or apps_out:
+        print(f"[refuse] GPU is not exclusive to this evaluation run "
+              f"({used}MiB used, {util}% util). CLAUDE.md rule 6: evaluate.py "
+              f"must not run while generation (vLLM) or anything else is on the "
+              f"GPU -- timing contamination. This is a hard rule with no bypass "
+              f"flag; stop the other process first (e.g. "
+              f"'scripts/serve_local.sh --stop').", file=sys.stderr)
+        if apps_out:
+            print(apps_out, file=sys.stderr)
+        sys.exit(1)
 
 
 def load_reference(task_name: str) -> str:
@@ -192,6 +237,8 @@ def main():
     ap.add_argument("--raw-dir", default=str(RAW_DIR))
     ap.add_argument("--out", default=None, help="default: results/eval/eval_<timestamp>.json")
     args = ap.parse_args()
+
+    assert_gpu_exclusive()
 
     records = run_eval(args.language, args.condition, args.model_dir, args.task, Path(args.raw_dir))
     summary = summarize(records)

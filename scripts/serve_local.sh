@@ -1,0 +1,268 @@
+#!/usr/bin/env bash
+# ============================================================================
+# scripts/serve_local.sh -- DEFAULT generation path (2026-08-19 re-plan): vLLM
+# serving on THIS server (PRO 6000, single GPU) for one of the two open-weight
+# models at a time. H100 (scripts/serve_h100.sh) is now an opportunistic
+# accelerator, not the default -- it isn't reliably available.
+#
+# Self-contained: conda-or-venv env creation, GPU occupancy preflight
+# (nvidia-smi, aborts if busy -- no sudo needed anywhere), health-checked
+# launch, and a JSON manifest (HF revision, vLLM version, dtype, GPU model)
+# for CLAUDE.md's "실행 후 기록" fields, same shape as serve_h100.sh's.
+#
+# Usage:
+#   scripts/serve_local.sh gptoss              # openai/gpt-oss-120b, port 8000
+#   scripts/serve_local.sh qwen                 # Qwen3-Coder-Next-FP8 w/ downgrade ladder, port 8001
+#   scripts/serve_local.sh --stop
+#   scripts/serve_local.sh --status
+#
+# Qwen downgrade ladder (this server has ONE 96GB GPU; Qwen3-Coder-Next-FP8's
+# ~80B params at FP8 leave little headroom at full 256K context):
+#   1. full context (vLLM default max-model-len for this checkpoint)
+#   2. same checkpoint, --max-model-len reduced to 65536
+#   3. fall back to Qwen/Qwen3-Coder-30B-A3B-Instruct (standard MoE, bf16,
+#      ~61GB, no hybrid-attention TP requirement -- comfortably fits alone)
+# Each step is logged; if step 3 is reached this is a REAL downgrade and must
+# be reported, not silently absorbed (CLAUDE.md: "강등이 실제로 일어나면 ...
+# 조용히 넘어가지 않는다").
+# ============================================================================
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+LOG_DIR="$REPO_ROOT/logs/vllm"
+ENV_DIR="$REPO_ROOT/.venv-vllm"
+mkdir -p "$LOG_DIR"
+
+GPTOSS_REPO="openai/gpt-oss-120b"
+GPTOSS_PORT=8000
+QWEN_REPO="Qwen/Qwen3-Coder-Next-FP8"
+QWEN_FALLBACK_REPO="Qwen/Qwen3-Coder-30B-A3B-Instruct"
+QWEN_PORT=8001
+GPU_INDEX=0
+
+ACTION="serve"
+TARGET=""
+
+for arg in "$@"; do
+    case "$arg" in
+        gptoss|qwen) TARGET="$arg" ;;
+        --stop) ACTION="stop" ;;
+        --status) ACTION="status" ;;
+        -h|--help)
+            grep '^# ' "$0" | sed 's/^# \{0,1\}//'
+            exit 0
+            ;;
+        *) echo "[serve_local] unknown arg: $arg" >&2; exit 1 ;;
+    esac
+done
+
+log() { echo "[serve_local] $*"; }
+pidfile() { echo "$LOG_DIR/local_$1.pid"; }
+
+# ----------------------------------------------------------------------------
+# --status / --stop
+# ----------------------------------------------------------------------------
+if [ "$ACTION" = "status" ]; then
+    for name in gptoss qwen; do
+        pf="$(pidfile "$name")"
+        if [ -f "$pf" ] && kill -0 "$(cat "$pf")" 2>/dev/null; then
+            log "$name: RUNNING (pid $(cat "$pf"))"
+        else
+            log "$name: not running"
+        fi
+    done
+    exit 0
+fi
+
+if [ "$ACTION" = "stop" ]; then
+    for name in gptoss qwen; do
+        pf="$(pidfile "$name")"
+        if [ -f "$pf" ] && kill -0 "$(cat "$pf")" 2>/dev/null; then
+            log "stopping $name (pid $(cat "$pf"))"
+            kill "$(cat "$pf")"
+            rm -f "$pf"
+        else
+            log "$name: not running, nothing to stop"
+        fi
+    done
+    exit 0
+fi
+
+if [ -z "$TARGET" ]; then
+    log "FATAL: specify a model: 'gptoss' or 'qwen' (or --stop / --status)."
+    exit 1
+fi
+
+# ----------------------------------------------------------------------------
+# 1. GPU pre-flight.
+# ----------------------------------------------------------------------------
+if ! command -v nvidia-smi >/dev/null 2>&1; then
+    log "FATAL: nvidia-smi not found."
+    exit 1
+fi
+
+log "GPU pre-flight check:"
+nvidia-smi --query-gpu=index,name,memory.used,memory.total,utilization.gpu --format=csv | tee "$LOG_DIR/preflight_nvidia_smi.txt"
+GPU_NAME="$(nvidia-smi --query-gpu=name --format=csv,noheader -i "$GPU_INDEX")"
+
+read -r USED UTIL < <(nvidia-smi --query-gpu=memory.used,utilization.gpu --format=csv,noheader,nounits -i "$GPU_INDEX" | tr ',' ' ')
+if [ "$USED" -gt 500 ] || [ "$UTIL" -gt 5 ]; then
+    log "FATAL: GPU $GPU_INDEX appears occupied (${USED}MiB used, ${UTIL}% util). Refusing to start."
+    nvidia-smi --query-compute-apps=pid,process_name,used_memory --format=csv | tee -a "$LOG_DIR/preflight_nvidia_smi.txt"
+    log "This script will not kill processes it didn't start. Clear it yourself first if stale."
+    exit 1
+fi
+log "GPU $GPU_INDEX ($GPU_NAME) idle -- proceeding."
+
+# ----------------------------------------------------------------------------
+# 2. Python environment (no sudo).
+# ----------------------------------------------------------------------------
+if command -v conda >/dev/null 2>&1; then
+    log "conda found -- using conda env 'kernel2x2-vllm'"
+    if ! conda env list | grep -q "^kernel2x2-vllm "; then
+        conda create -y -n kernel2x2-vllm python=3.12
+    fi
+    # shellcheck disable=SC1091
+    source "$(conda info --base)/etc/profile.d/conda.sh"
+    conda activate kernel2x2-vllm
+else
+    log "conda not found -- using venv at $ENV_DIR"
+    if [ ! -d "$ENV_DIR" ]; then
+        python3 -m venv "$ENV_DIR"
+    fi
+    # shellcheck disable=SC1091
+    source "$ENV_DIR/bin/activate"
+fi
+PY=python
+
+log "installing/upgrading vllm (>=0.15.0) + huggingface_hub"
+pip install -q --upgrade pip
+pip install -q --upgrade "vllm>=0.15.0" huggingface_hub
+
+VLLM_VERSION="$($PY -c 'import vllm; print(vllm.__version__)')"
+log "vllm version: $VLLM_VERSION"
+
+# ----------------------------------------------------------------------------
+# 3. Helpers.
+# ----------------------------------------------------------------------------
+resolve_hf_revision() {
+    local repo="$1"
+    local cache_name="models--$(echo "$repo" | tr '/' '-')"
+    local hub_dir="${HF_HOME:-$HOME/.cache/huggingface}/hub/$cache_name/snapshots"
+    if [ -d "$hub_dir" ]; then
+        ls "$hub_dir" | head -1
+    else
+        echo "UNKNOWN"
+    fi
+}
+
+# Launch one attempt; returns 0=healthy, 1=process died early, 2=timed out.
+# Sets ATTEMPT_PID as a side effect.
+try_launch() {
+    local repo="$1" port="$2" logfile="$3"; shift 3
+    local extra_args=("$@")
+    log "attempt: model=$repo port=$port extra_args='${extra_args[*]:-<none>}'"
+    CUDA_VISIBLE_DEVICES="$GPU_INDEX" nohup "$PY" -m vllm.entrypoints.openai.api_server \
+        --model "$repo" --port "$port" --tensor-parallel-size 1 --trust-remote-code \
+        "${extra_args[@]}" > "$logfile" 2>&1 &
+    ATTEMPT_PID=$!
+
+    local waited=0 max_wait=1800
+    while [ "$waited" -lt "$max_wait" ]; do
+        if ! kill -0 "$ATTEMPT_PID" 2>/dev/null; then
+            log "attempt died early (see $logfile)"
+            return 1
+        fi
+        if curl -sf "http://localhost:${port}/v1/models" >/dev/null 2>&1; then
+            log "attempt healthy."
+            return 0
+        fi
+        sleep 10
+        waited=$((waited + 10))
+    done
+    log "attempt timed out after ${max_wait}s without dying or becoming healthy -- killing it."
+    kill "$ATTEMPT_PID" 2>/dev/null || true
+    return 2
+}
+
+looks_like_oom() {
+    grep -qiE "out of memory|CUDA error: out of memory|torch\.(cuda\.)?OutOfMemoryError|CUDA_ERROR_OUT_OF_MEMORY" "$1" 2>/dev/null
+}
+
+write_manifest() {
+    local name="$1" repo="$2" port="$3" revision="$4" downgraded="$5" reason="$6" max_len="$7"
+    cat > "$LOG_DIR/${name}_manifest.json" <<JSON
+{
+  "name": "$name",
+  "hf_repo": "$repo",
+  "hf_revision": "$revision",
+  "vllm_version": "$VLLM_VERSION",
+  "port": $port,
+  "tensor_parallel_size": 1,
+  "gpu_model": "$GPU_NAME",
+  "cuda_visible_devices": "$GPU_INDEX",
+  "downgraded": $downgraded,
+  "downgrade_reason": "$reason",
+  "max_model_len_override": "$max_len",
+  "base_url": "http://localhost:${port}/v1",
+  "started_at": "$(date -Iseconds)"
+}
+JSON
+    log "wrote $LOG_DIR/${name}_manifest.json -- copy into CLAUDE.md's '실행 후 기록' fields."
+}
+
+# ----------------------------------------------------------------------------
+# 4. Launch.
+# ----------------------------------------------------------------------------
+if [ "$TARGET" = "gptoss" ]; then
+    if try_launch "$GPTOSS_REPO" "$GPTOSS_PORT" "$LOG_DIR/gptoss.log"; then
+        echo "$ATTEMPT_PID" > "$(pidfile gptoss)"
+        write_manifest gptoss "$GPTOSS_REPO" "$GPTOSS_PORT" "$(resolve_hf_revision "$GPTOSS_REPO")" false "" ""
+    else
+        log "FATAL: gpt-oss-120b failed to come up. See $LOG_DIR/gptoss.log"
+        exit 1
+    fi
+
+elif [ "$TARGET" = "qwen" ]; then
+    log "=== attempt 1/3: full context, ${QWEN_REPO} ==="
+    if try_launch "$QWEN_REPO" "$QWEN_PORT" "$LOG_DIR/qwen_attempt1.log"; then
+        echo "$ATTEMPT_PID" > "$(pidfile qwen)"
+        write_manifest qwen "$QWEN_REPO" "$QWEN_PORT" "$(resolve_hf_revision "$QWEN_REPO")" false "" "default"
+        log "qwen up: $QWEN_REPO, full context, no downgrade."
+        exit 0
+    fi
+    if ! looks_like_oom "$LOG_DIR/qwen_attempt1.log"; then
+        log "FATAL: attempt 1 failed for a non-OOM reason -- not retrying blindly."
+        log "See $LOG_DIR/qwen_attempt1.log"
+        exit 1
+    fi
+    log "attempt 1 looks like an OOM. === attempt 2/3: reduced max-model-len=65536 ==="
+
+    if try_launch "$QWEN_REPO" "$QWEN_PORT" "$LOG_DIR/qwen_attempt2.log" --max-model-len 65536; then
+        echo "$ATTEMPT_PID" > "$(pidfile qwen)"
+        write_manifest qwen "$QWEN_REPO" "$QWEN_PORT" "$(resolve_hf_revision "$QWEN_REPO")" true \
+            "OOM at full context on 1x${GPU_NAME}; reduced max-model-len to 65536" "65536"
+        log "REPORTED: qwen downgraded to reduced context (65536), same checkpoint. See manifest."
+        exit 0
+    fi
+    if ! looks_like_oom "$LOG_DIR/qwen_attempt2.log"; then
+        log "FATAL: attempt 2 failed for a non-OOM reason -- not retrying blindly."
+        log "See $LOG_DIR/qwen_attempt2.log"
+        exit 1
+    fi
+    log "attempt 2 still OOM. === attempt 3/3: fallback to ${QWEN_FALLBACK_REPO} ==="
+
+    if try_launch "$QWEN_FALLBACK_REPO" "$QWEN_PORT" "$LOG_DIR/qwen_attempt3.log"; then
+        echo "$ATTEMPT_PID" > "$(pidfile qwen)"
+        write_manifest qwen "$QWEN_FALLBACK_REPO" "$QWEN_PORT" "$(resolve_hf_revision "$QWEN_FALLBACK_REPO")" true \
+            "Qwen3-Coder-Next-FP8 OOM'd even at max-model-len=65536 on 1x${GPU_NAME}; downgraded model to Qwen3-Coder-30B-A3B-Instruct" ""
+        log "REPORTED: qwen DOWNGRADED to ${QWEN_FALLBACK_REPO}. This changes the experiment's model"
+        log "identity -- CLAUDE.md must be updated with this fact before any real run uses it."
+        exit 0
+    fi
+    log "FATAL: all 3 attempts failed. See $LOG_DIR/qwen_attempt{1,2,3}.log"
+    exit 1
+fi
+
+log "done. '$0 --status' to check, '$0 --stop' to shut down."
