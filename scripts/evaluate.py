@@ -406,9 +406,34 @@ def eval_one_isolated(record: dict, timeout: int = 300) -> dict:
                                f"or a hang killed after a {timeout}s timeout"}
 
 
-def run_eval(language=None, condition=None, model_dir=None, task=None, raw_dir=RAW_DIR, checkpoint_path=None):
-    records = []
+def load_checkpoint_records(path: Path) -> list:
+    """Reads the records already evaluated in a previous (possibly interrupted) run.
+
+    NOTE (2026-08-20): the 2026-08-19 full run was killed at 1,087/1,480 when the
+    shell session it was attached to went away. The per-sample checkpoint had all
+    1,087 results on disk, but there was no way to continue from them, so the only
+    options were re-evaluating everything or splitting the run by --language and
+    merging by hand. --resume closes that gap: samples already present in the
+    checkpoint are never re-evaluated (results/ is read-only measurement data --
+    re-running a sample could silently change a recorded verdict), and the new
+    results are appended to the same file so the finished artifact is one complete
+    1,480-record run rather than a pile of per-language shards."""
+    if not path.exists():
+        return []
+    data = json.loads(path.read_text())
+    return data.get("records", [])
+
+
+def run_eval(language=None, condition=None, model_dir=None, task=None, raw_dir=RAW_DIR,
+             checkpoint_path=None, prior_records=None):
+    records = list(prior_records or [])
+    already_done = {r["path"] for r in records}
+    skipped = 0
     for path, record in find_samples(language, condition, model_dir, task, raw_dir):
+        rel = str(path.relative_to(raw_dir))
+        if rel in already_done:
+            skipped += 1
+            continue
         result = eval_one_isolated(record)
         entry = {
             "path": str(path.relative_to(raw_dir)),
@@ -430,6 +455,8 @@ def run_eval(language=None, condition=None, model_dir=None, task=None, raw_dir=R
             checkpoint_path.write_text(json.dumps(
                 {"summary": summarize(records), "records": records, "status": "in_progress"},
                 indent=2, default=str))
+    if skipped:
+        print(f"[eval] --resume: skipped {skipped} sample(s) already present in the checkpoint")
     return records
 
 
@@ -456,15 +483,30 @@ def main():
     ap.add_argument("--task", default=None)
     ap.add_argument("--raw-dir", default=str(RAW_DIR))
     ap.add_argument("--out", default=None, help="default: results/eval/eval_<timestamp>.json")
+    ap.add_argument("--resume", default=None,
+                    help="continue an interrupted run from its checkpoint JSON: samples already "
+                         "recorded there are skipped (never re-evaluated) and new results are "
+                         "appended to the same file. Implies --out <RESUME> unless --out is given.")
     args = ap.parse_args()
 
     assert_gpu_exclusive()
 
     EVAL_DIR.mkdir(parents=True, exist_ok=True)
-    out_path = Path(args.out) if args.out else EVAL_DIR / f"eval_{time.strftime('%Y%m%dT%H%M%S')}.json"
+    if args.out:
+        out_path = Path(args.out)
+    elif args.resume:
+        out_path = Path(args.resume)
+    else:
+        out_path = EVAL_DIR / f"eval_{time.strftime('%Y%m%dT%H%M%S')}.json"
+
+    prior_records = []
+    if args.resume:
+        resume_path = Path(args.resume)
+        prior_records = load_checkpoint_records(resume_path)
+        print(f"[eval] --resume {resume_path}: {len(prior_records)} sample(s) already evaluated")
 
     records = run_eval(args.language, args.condition, args.model_dir, args.task, Path(args.raw_dir),
-                        checkpoint_path=out_path)
+                        checkpoint_path=out_path, prior_records=prior_records)
     summary = summarize(records)
 
     print("\n=== summary (compiled / correct out of n, generated=parsed-ok count) ===")
@@ -472,7 +514,8 @@ def main():
         print(f"  {lang:8s} n={d['n']:3d} generated={d['generated']:3d} "
               f"compiled={d['compiled']:3d} correct={d['correct']:3d}")
 
-    out_path.write_text(json.dumps({"summary": summary, "records": records}, indent=2, default=str))
+    out_path.write_text(json.dumps({"summary": summary, "records": records, "status": "complete"},
+                                   indent=2, default=str))
     print(f"\nwrote {out_path}")
     return 0
 
