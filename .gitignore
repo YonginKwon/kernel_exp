@@ -18,4 +18,6 @@ third_party/
 *.cubin
 *.fatbin
 .cache/
-third_party/cuda-sm120-toolchain/
+
+# Local Claude Code session settings (machine/user-specific, not project config)
+.claude/
