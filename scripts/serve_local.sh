@@ -12,19 +12,24 @@
 #
 # Usage:
 #   scripts/serve_local.sh gptoss              # openai/gpt-oss-120b, port 8000
-#   scripts/serve_local.sh qwen                 # Qwen3-Coder-Next-FP8 w/ downgrade ladder, port 8001
+#   scripts/serve_local.sh qwen                 # Qwen3-Coder-30B-A3B-Instruct, port 8001 (CONFIRMED model, PI 2026-08-19)
+#   scripts/serve_local.sh qwen --try-next-fp8  # opt-in: retry the original 80B-A3B-FP8 ladder (see below)
 #   scripts/serve_local.sh --stop
 #   scripts/serve_local.sh --status
 #
-# Qwen downgrade ladder (this server has ONE 96GB GPU; Qwen3-Coder-Next-FP8's
-# ~80B params at FP8 leave little headroom at full 256K context):
-#   1. full context (vLLM default max-model-len for this checkpoint)
+# CONFIRMED (CLAUDE.md, PI decision 2026-08-19): this experiment's "Qwen" model
+# is Qwen/Qwen3-Coder-30B-A3B-Instruct. The original target, Qwen3-Coder-Next-
+# FP8 (80B-A3B), segfaults on this GPU's hybrid Gated-DeltaNet kernel path
+# regardless of context size (not an OOM -- confirmed by direct investigation,
+# see CLAUDE.md) -- so `qwen` serves the confirmed model directly, no ladder,
+# no wasted multi-minute failed attempts on every serve.
+#
+# --try-next-fp8 re-enables the original 3-step downgrade ladder for future
+# retesting (e.g. after a vLLM/flashinfer update that might fix the hybrid-
+# attention kernel) -- NOT part of the default path:
+#   1. Qwen3-Coder-Next-FP8, full context
 #   2. same checkpoint, --max-model-len reduced to 65536
-#   3. fall back to Qwen/Qwen3-Coder-30B-A3B-Instruct (standard MoE, bf16,
-#      ~61GB, no hybrid-attention TP requirement -- comfortably fits alone)
-# Each step is logged; if step 3 is reached this is a REAL downgrade and must
-# be reported, not silently absorbed (CLAUDE.md: "강등이 실제로 일어나면 ...
-# 조용히 넘어가지 않는다").
+#   3. fall back to Qwen3-Coder-30B-A3B-Instruct (== today's default anyway)
 # ============================================================================
 set -euo pipefail
 
@@ -43,10 +48,12 @@ GPU_INDEX=0
 
 ACTION="serve"
 TARGET=""
+TRY_NEXT_FP8=0
 
 for arg in "$@"; do
     case "$arg" in
         gptoss|qwen) TARGET="$arg" ;;
+        --try-next-fp8) TRY_NEXT_FP8=1 ;;
         --stop) ACTION="stop" ;;
         --status) ACTION="status" ;;
         -h|--help)
@@ -275,13 +282,26 @@ if [ "$TARGET" = "gptoss" ]; then
         exit 1
     fi
 
-elif [ "$TARGET" = "qwen" ]; then
-    # --enforce-eager on every attempt: CUDA graph capture segfaults on this
+elif [ "$TARGET" = "qwen" ] && [ "$TRY_NEXT_FP8" -eq 0 ]; then
+    # Confirmed model (PI decision 2026-08-19, CLAUDE.md) -- serve directly,
+    # no ladder. --enforce-eager: CUDA graph capture segfaults on this
     # GPU/vLLM/torch combination regardless of model (confirmed with
-    # gpt-oss-120b, 2026-08-19) -- skip it outright rather than let it
-    # produce a non-OOM crash the downgrade ladder below would misdiagnose
-    # as FATAL.
-    log "=== attempt 1/3: full context, ${QWEN_REPO} ==="
+    # gpt-oss-120b, 2026-08-19).
+    log "serving CONFIRMED qwen model: ${QWEN_FALLBACK_REPO} (pass --try-next-fp8 to instead"
+    log "retry the original 80B-A3B-FP8 ladder)"
+    if try_launch "$QWEN_FALLBACK_REPO" "$QWEN_PORT" "$LOG_DIR/qwen.log" --enforce-eager; then
+        echo "$ATTEMPT_PID" > "$(pidfile qwen)"
+        write_manifest qwen "$QWEN_FALLBACK_REPO" "$QWEN_PORT" "$(resolve_hf_revision "$QWEN_FALLBACK_REPO")" true \
+            "Qwen3-Coder-Next-FP8 segfaults on this GPU's hybrid Gated-DeltaNet kernel path (not OOM); 30B-A3B-Instruct confirmed as the experiment's Qwen model (PI decision 2026-08-19, CLAUDE.md)" ""
+        log "qwen up: ${QWEN_FALLBACK_REPO}."
+        exit 0
+    else
+        log "FATAL: ${QWEN_FALLBACK_REPO} failed to come up. See $LOG_DIR/qwen.log"
+        exit 1
+    fi
+
+elif [ "$TARGET" = "qwen" ] && [ "$TRY_NEXT_FP8" -eq 1 ]; then
+    log "=== --try-next-fp8: attempt 1/3, full context, ${QWEN_REPO} ==="
     if try_launch "$QWEN_REPO" "$QWEN_PORT" "$LOG_DIR/qwen_attempt1.log" --enforce-eager; then
         echo "$ATTEMPT_PID" > "$(pidfile qwen)"
         write_manifest qwen "$QWEN_REPO" "$QWEN_PORT" "$(resolve_hf_revision "$QWEN_REPO")" false "" "default"

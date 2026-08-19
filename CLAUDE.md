@@ -124,10 +124,10 @@ H100은 비어 있을 때 모델 하나를 통째로 넘기는 가속 옵션으�
 | 기본 경로 | `scripts/serve_local.sh <model>` — 이 서버(PRO 6000)에서 모델 1개씩 순차 서빙 |
 | 가속 옵션 | `scripts/serve_h100.sh` — 학과 H100×2, 비어 있을 때만, 모델 1개를 통째로 |
 | 모델 A | gpt-oss-120b (`openai/gpt-oss-120b`), MXFP4 기본 양자화, 포트 8000 — **동작 확인 (2026-08-19)** |
-| 모델 B | Qwen3-Coder-Next-80B-A3B (`Qwen/Qwen3-Coder-Next-FP8`), 포트 8001 — **이 GPU에서 동작 안 함, 아키텍처 버그 (아래 참고)** |
-| Qwen 실제 사용 체크포인트 | `Qwen/Qwen3-Coder-30B-A3B-Instruct`로 강등 (아래 "Qwen 실패" 절 참고) — **메모리 부족이 아니라 커널 버그로 인한 강등**, 원래 사다리(①풀컨텍스트→②컨텍스트축소→③모델강등)의 ①→③ 직행 |
+| 모델 B (~~원안~~) | ~~Qwen3-Coder-Next-80B-A3B (`Qwen/Qwen3-Coder-Next-FP8`)~~ — 이 GPU에서 동작 안 함, 아키텍처 버그 (아래 참고) |
+| **모델 B (확정, PI 승인 2026-08-19)** | **`Qwen/Qwen3-Coder-30B-A3B-Instruct`, 포트 8001** — 이번 실험의 "Qwen" 모델로 최종 확정. `scripts/serve_local.sh qwen`이 이 체크포인트를 직접 서빙(80B 사다리는 기본 비활성, 아래 참고) |
 | HF 체크포인트 리비전 (gpt-oss-120b) | `b5c939de8f754692c1647ca79fbf85e8c1e70f8a` |
-| HF 체크포인트 리비전 (Qwen, 강등 후) | **실행 후 기록** (`logs/vllm/qwen_manifest.json`) |
+| HF 체크포인트 리비전 (Qwen, 확정) | `b2cff646eb4bb1d68355c01b18ae02e7cf42d120` |
 | vLLM 버전 | 0.27.1 (`pip install vllm>=0.15.0`이 실제로 받아온 버전) |
 | dtype | 모델 A: MXFP4(배포 기본값) / 모델 B(강등 후 30B-A3B): bf16(양자화 없음) |
 | GPU 기종 | NVIDIA RTX PRO 6000 Blackwell Workstation Edition (이 서버 실측값, 위 "실측 환경" 표) |
@@ -175,10 +175,16 @@ API 키는 없음 — vLLM은 인증하지 않으므로 더미 문자열을 Open
 해결하지 못한다고 판단해 ③(모델 강등, 표준 MoE 아키텍처로 구조 자체를 바꿈)으로
 직행했다. `serve_local.sh`의 `looks_like_oom()` 판정은 여기선 "non-OOM"으로
 정확히 걸러냈다(그래서 자동으로 ②를 시도하지 않고 멈췄다) — 다만 ①→③ 직행은
-스크립트가 자동으로 하지 않고 이 세션에서 수동 판단으로 진행했다. **PI 확인 필요**:
-Qwen3-Coder-Next-FP8을 이 GPU에서 다시 시도할 가치가 있는지(vLLM/flashinfer
-업데이트 대기, 다른 attention backend 강제 등) 아니면 30B-A3B 강등을 이번
-실험의 "Qwen" 모델로 확정할지.
+스크립트가 자동으로 하지 않고 이 세션에서 수동 판단으로 진행했다.
+
+**PI 결정 (2026-08-19, 확정): `Qwen/Qwen3-Coder-30B-A3B-Instruct`를 이번 실험의
+"Qwen" 모델로 확정한다.** Qwen3-Coder-Next-FP8(80B-A3B)의 재시도(vLLM/flashinfer
+업데이트 대기, 다른 attention backend 강제 등)는 하지 않음 — 강등 사유(메모리
+부족이 아니라 hybrid Gated-DeltaNet 커널의 세그폴트, ①→③ 직행)는 위에 기록된
+그대로가 최종 재현성 근거다. `scripts/serve_local.sh`는 이 결정을 반영해 `qwen`
+타깃이 기본적으로 30B-A3B-Instruct를 직접 서빙하도록 변경했다 (80B 사다리
+로직은 코드에 남겨두되 `--try-next-fp8`로만 opt-in — 향후 vLLM/flashinfer가
+이 아키텍처를 지원하게 되면 재시도해볼 수 있도록).
 
 ### PTX go/no-go 판정: **GO** (2026-08-19)
 

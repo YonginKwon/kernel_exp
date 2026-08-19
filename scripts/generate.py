@@ -45,9 +45,11 @@ import json
 import re
 import subprocess
 import sys
+import threading
 import time
 import urllib.request
 import urllib.error
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).parent.parent
@@ -184,65 +186,92 @@ def call_model(client, model: str, prompt: str, temperature: float, max_tokens: 
     return client.chat.completions.create(**kwargs)
 
 
+_print_lock = threading.Lock()
+
+
+def _generate_one(client, language, condition, model, base_url, manifest, spec, doc_text,
+                   env_info, temperature, max_tokens, seed_base, out_dir, task, i):
+    ref = load_reference_code(task["name"])
+    prompt = spec.build_prompt(language, ref, doc_spec_text=doc_text)
+    prompt_hash = hashlib.sha256(prompt.encode()).hexdigest()
+
+    seed = (seed_base + i) if seed_base is not None else None
+    timestamp = time.strftime("%Y-%m-%dT%H:%M:%S%z")
+
+    record = {
+        "task": task["name"],
+        "task_family": task["family"],
+        "language": language,
+        "condition": condition,
+        "sample_index": i,
+        "model": model,
+        "base_url": base_url,
+        "hf_revision": manifest.get("hf_revision"),
+        "vllm_version": manifest.get("vllm_version"),
+        "tensor_parallel_size": manifest.get("tensor_parallel_size"),
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+        "seed": seed,
+        "timestamp": timestamp,
+        "prompt_sha256": prompt_hash,
+        "prompt": prompt,
+        "env": env_info,
+    }
+
+    try:
+        response = call_model(client, model, prompt, temperature, max_tokens, seed)
+        raw_text = response.choices[0].message.content
+        record["response_raw"] = raw_text
+        record["response_finish_reason"] = response.choices[0].finish_reason
+        record["usage"] = response.usage.model_dump() if response.usage else None
+        parsed = extract_first_code_block(raw_text or "")
+        record["parsed_code"] = parsed
+        record["status"] = "generated" if parsed is not None else "format_failure"
+        if record["response_finish_reason"] == "length":
+            record["status"] = "truncated"
+    except Exception as e:
+        record["status"] = "request_error"
+        record["error"] = f"{type(e).__name__}: {e}"
+
+    task_dir = out_dir / language / condition / task["name"] / model.replace("/", "_")
+    task_dir.mkdir(parents=True, exist_ok=True)
+    out_path = task_dir / f"sample_{i}.json"
+    out_path.write_text(json.dumps(record, indent=2, default=str))
+    with _print_lock:
+        print(f"[gen] {task['name']} sample={i} status={record['status']} -> {out_path}")
+    return record["status"]
+
+
 def run_generation(language: str, tasks: list, condition: str, model: str, base_url: str,
                     manifest: dict, num_samples: int, temperature: float, max_tokens: int,
-                    seed_base: int | None, out_dir: Path):
+                    seed_base: int | None, out_dir: Path, concurrency: int = 1):
     from openai import OpenAI
+    # vLLM handles concurrent requests fine (continuous batching); each
+    # in-flight request needs its own client-side connection, but the openai
+    # SDK's client is safe to share across threads for this. File writes are
+    # one-per-sample-path so there's no cross-thread contention there either.
     client = OpenAI(base_url=base_url, api_key="not-needed-for-vllm")
 
     spec = get_spec()
     doc_text = load_language_spec(language) if condition == "docinject" else None
     env_info = env_fingerprint()
 
-    for task in tasks:
-        ref = load_reference_code(task["name"])
-        prompt = spec.build_prompt(language, ref, doc_spec_text=doc_text)
-        prompt_hash = hashlib.sha256(prompt.encode()).hexdigest()
+    jobs = [(task, i) for task in tasks for i in range(num_samples)]
 
-        for i in range(num_samples):
-            seed = (seed_base + i) if seed_base is not None else None
-            timestamp = time.strftime("%Y-%m-%dT%H:%M:%S%z")
+    if concurrency <= 1:
+        for task, i in jobs:
+            _generate_one(client, language, condition, model, base_url, manifest, spec, doc_text,
+                          env_info, temperature, max_tokens, seed_base, out_dir, task, i)
+        return
 
-            record = {
-                "task": task["name"],
-                "task_family": task["family"],
-                "language": language,
-                "condition": condition,
-                "sample_index": i,
-                "model": model,
-                "base_url": base_url,
-                "hf_revision": manifest.get("hf_revision"),
-                "vllm_version": manifest.get("vllm_version"),
-                "tensor_parallel_size": manifest.get("tensor_parallel_size"),
-                "temperature": temperature,
-                "max_tokens": max_tokens,
-                "seed": seed,
-                "timestamp": timestamp,
-                "prompt_sha256": prompt_hash,
-                "prompt": prompt,
-                "env": env_info,
-            }
-
-            try:
-                response = call_model(client, model, prompt, temperature, max_tokens, seed)
-                raw_text = response.choices[0].message.content
-                record["response_raw"] = raw_text
-                record["response_finish_reason"] = response.choices[0].finish_reason
-                record["usage"] = response.usage.model_dump() if response.usage else None
-                parsed = extract_first_code_block(raw_text or "")
-                record["parsed_code"] = parsed
-                record["status"] = "generated" if parsed is not None else "format_failure"
-                if record["response_finish_reason"] == "length":
-                    record["status"] = "truncated"
-            except Exception as e:
-                record["status"] = "request_error"
-                record["error"] = f"{type(e).__name__}: {e}"
-
-            task_dir = out_dir / language / condition / task["name"] / model.replace("/", "_")
-            task_dir.mkdir(parents=True, exist_ok=True)
-            out_path = task_dir / f"sample_{i}.json"
-            out_path.write_text(json.dumps(record, indent=2, default=str))
-            print(f"[gen] {task['name']} sample={i} status={record['status']} -> {out_path}")
+    with ThreadPoolExecutor(max_workers=concurrency) as pool:
+        futures = [
+            pool.submit(_generate_one, client, language, condition, model, base_url, manifest,
+                        spec, doc_text, env_info, temperature, max_tokens, seed_base, out_dir, task, i)
+            for task, i in jobs
+        ]
+        for f in as_completed(futures):
+            f.result()  # re-raise any exception that escaped _generate_one's own try/except
 
 
 def main():
@@ -278,6 +307,11 @@ def main():
                      help="base seed; sample i uses seed+i. PROMPT_SPEC.md §4 requires "
                           "this be set for every real (non-dry-run) call.")
     ap.add_argument("--out-dir", default=str(RESULTS_RAW))
+    ap.add_argument("--concurrency", type=int, default=1,
+                     help="parallel in-flight requests to the endpoint (vLLM batches "
+                          "concurrent requests fine). Default 1 (sequential); use e.g. "
+                          "8-16 for large runs. Each sample still gets its own logged "
+                          "record regardless of concurrency.")
     ap.add_argument("--dry-run", action="store_true",
                      help="build every prompt and report counts/token estimate; NO "
                           "network calls.")
@@ -333,7 +367,8 @@ def main():
     dry_run_report(args.language, tasks, args.condition, num_samples, args.model, args.base_url)
     print(f"\n[confirmed] proceeding with {len(tasks) * num_samples} real requests to {args.base_url} ...")
     run_generation(args.language, tasks, args.condition, args.model, args.base_url, manifest,
-                    num_samples, temperature, max_tokens, args.seed, Path(args.out_dir))
+                    num_samples, temperature, max_tokens, args.seed, Path(args.out_dir),
+                    concurrency=args.concurrency)
     return 0
 
 
