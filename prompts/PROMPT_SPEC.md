@@ -140,3 +140,26 @@ Provide the corrected complete solution in a single code block.
   `extra_cflags`/`extra_cuda_cflags`에서 제거 후 C++17 고정); 아키텍처 플래그는
   프로브 판정대로 변경하지 않음. 영향받은 51개 Qwen CUDA 샘플은 하니스 수정 후
   재평가(재생성 아님 — 하니스 레벨 수정이므로).
+
+- **2026-08-20: 컴파일 실패 진단 텍스트 로깅 캡 2000/4000자 → 20000자 상향 (PI 승인).**
+  근거: 본 실행 평가 중 `scripts/evaluate.py`가 컴파일 실패 시 기록하는
+  `metadata.compilation_error`가 2000자(일부 경로는 4000자)에서 잘려, nvcc
+  명령줄이 긴 CUDA 샘플은 실제 `error:` 진단 줄에 도달하기도 전에 텍스트가
+  끊기는 경우가 있었다. 영향은 모델 간 비대칭이었다(gpt-oss-120b CUDA
+  172/181건 vs. Qwen3-Coder-30B-A3B-Instruct CUDA 25/124건 — 704건의 컴파일
+  실패 기록 중 197건이 이 캡에 걸림, PTX·TileLang은 0건). 그대로 두면 논문의
+  오류 분류표가 모델별로 왜곡된 채 보고될 위험이 있어 승인. **판정(compiled/
+  correctness)에는 영향 없음 — 순수 로깅 필드만 확장**하는 변경이므로 이미
+  기록된 판정은 재평가하지 않는다. 캡에 걸려 잘린 197건의 원문 진단은 별도로
+  격리 재컴파일(CUDA 프로브 때와 동일 절차 — 판정 불변, 진단 텍스트만 재수집)
+  로 보강할 예정.
+- **2026-08-20: 닫히지 않은 코드펜스(unterminated fence) 허용 완화 — 검토 후 기각 (PI 결정).**
+  제안 배경: gpt-oss-120b CUDA 3건(1.6%, `finish_reason="stop"`이지만 닫는
+  ` ``` `이 누락)이 §5의 "완결된 fenced code block 없으면 format_failure"
+  규칙에 걸려 파싱 실패로 분류됨. `extract_first_code_block()`을 완화해
+  닫는 펜스가 없어도 EOF까지를 취하면 이 3건을 회수할 수 있음을 확인했음.
+  **기각 사유**: §5는 사전 등록된 파싱 규약이고("코드 블록이 없으면
+  format_failure, 수동 구제 금지"), 출력 형식 준수 자체가 이 실험이 측정하는
+  모델 능력의 일부다. 1.6%(3/185)를 구하자고 실행 중간에 파서를 바꾸면 결과에
+  실질적 영향 없이 프로토콜 변경 이력만 늘어난다. 하니스는 변경하지 않음 —
+  이 3건은 format_failure로 유지.

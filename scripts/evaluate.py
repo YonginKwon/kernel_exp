@@ -48,6 +48,19 @@ REPO_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(REPO_ROOT / "third_party" / "KernelBench" / "src"))
 sys.path.insert(0, str(REPO_ROOT / "harness" / "ptx"))
 
+# NOTE (2026-08-20, PI-approved -- see prompts/PROMPT_SPEC.md §7 change
+# history): was 2000/4000. The 2026-08-19 full-run eval showed this cap
+# routinely cut a CUDA sample's nvcc invocation off before the "error:"
+# line -- 197/705 compile-failure records lost their real diagnostic this
+# way, and the loss was asymmetric across models (172/181 for gpt-oss-120b
+# vs. 25/124 for Qwen3-Coder-30B-A3B-Instruct), which would have distorted
+# the paper's error-classification table by model. This is a pure logging
+# cap: it does not change compiled/correctness verdicts or re-run any
+# evaluation, only how much of the diagnostic text gets kept. Raised well
+# above any observed real diagnostic length (max seen so far: 4000, at the
+# old cap -- i.e. we don't yet know the true max, hence the generous margin).
+COMPILE_ERROR_LOG_CAP = 20000
+
 # NOTE (2026-08-19): tried monkeypatching subprocess.run globally here to
 # force-capture nvcc/ninja/g++ output for every compile failure (torch's
 # build-failure path sometimes raises a bare
@@ -222,7 +235,7 @@ def _attach_captured_output(metadata: dict):
     stdout, so this is the only reliable way to keep it in results/eval/."""
     if not _captured_subprocess_output:
         return
-    full = "\n".join(_captured_subprocess_output)[-4000:]
+    full = "\n".join(_captured_subprocess_output)[-COMPILE_ERROR_LOG_CAP:]
     existing = metadata.get("compilation_error", "")
     if len(full) > len(existing):
         metadata["compilation_error_full_stdout"] = full
@@ -249,7 +262,7 @@ def _recover_real_compile_error(code: str, language: str, build_dir: str | None 
             kb_eval.load_custom_model(code, context, build_directory=build_dir)
     except Exception as e:
         return {"compilation_error_name": type(e).__name__,
-                "compilation_error": str(e)[:4000],
+                "compilation_error": str(e)[:COMPILE_ERROR_LOG_CAP],
                 "recovered_from": "kernelbench_false_positive_lock_retry"}
     # Loading succeeded on retry with no exception -- genuinely transient.
     return None
@@ -335,7 +348,7 @@ def eval_one(record: dict, device) -> dict:
         for d in build_dirs:
             shutil.rmtree(d, ignore_errors=True)
 
-    metadata = {k: str(v)[:2000] for k, v in result.metadata.items()}
+    metadata = {k: str(v)[:COMPILE_ERROR_LOG_CAP] for k, v in result.metadata.items()}
     if not result.compiled:
         _attach_captured_output(metadata)
     return {
