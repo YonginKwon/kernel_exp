@@ -339,7 +339,19 @@ elif [ "$TARGET" = "qwen" ] && [ "$TRY_NEXT_FP8" -eq 0 ]; then
     # gpt-oss-120b, 2026-08-19).
     log "serving CONFIRMED qwen model: ${QWEN_FALLBACK_REPO} (pass --try-next-fp8 to instead"
     log "retry the original 80B-A3B-FP8 ladder)"
-    if try_launch "$QWEN_FALLBACK_REPO" "$QWEN_PORT" "$LOG_DIR/qwen.log" --enforce-eager; then
+    # [sync-needed] kernel-lang-2x2 A100 probe: no --max-model-len was passed
+    # here, so vLLM defaults to Qwen3-Coder-30B-A3B-Instruct's native 262144
+    # context -- needs 24GiB KV cache, more than fits alongside the weights
+    # at default gpu_memory_utilization on this 80GB A100 ("estimated maximum
+    # model length is 150192" at default settings; refused to start).
+    # Presumably fits as-is on the primary box's 97,887 MiB card. Parametrized
+    # via env var (default empty = unchanged) rather than hand-editing.
+    # Confirmed 2026-08-20.
+    QWEN_EXTRA_ARGS=()
+    if [ -n "${KERNEL2X2_QWEN_MAX_MODEL_LEN:-}" ]; then
+        QWEN_EXTRA_ARGS+=(--max-model-len "$KERNEL2X2_QWEN_MAX_MODEL_LEN")
+    fi
+    if try_launch "$QWEN_FALLBACK_REPO" "$QWEN_PORT" "$LOG_DIR/qwen.log" --enforce-eager "${QWEN_EXTRA_ARGS[@]}"; then
         echo "$ATTEMPT_PID" > "$(pidfile qwen)"
         write_manifest qwen "$QWEN_FALLBACK_REPO" "$QWEN_PORT" "$(resolve_hf_revision "$QWEN_FALLBACK_REPO")" true \
             "Qwen3-Coder-Next-FP8 segfaults on this GPU's hybrid Gated-DeltaNet kernel path (not OOM); 30B-A3B-Instruct confirmed as the experiment's Qwen model (PI decision 2026-08-19, CLAUDE.md)" ""
