@@ -184,8 +184,28 @@ log "vllm version: $VLLM_VERSION"
 # versioned pip packages), and flashinfer hard-asserts they match
 # (CUDART_VERSION vs __CUDACC_VER__). Force them to match explicitly rather
 # than trust whatever pip's resolver happened to pick.
-CU_DIR="$($PY -c 'import nvidia, os; print(os.path.join(list(nvidia.__path__)[0], "cu13"))')"
-if [ -d "$CU_DIR" ]; then
+# [sync-needed] kernel-lang-2x2 A100 probe: this whole block exists solely to
+# get flashinfer's Blackwell (sm_120a) JIT compile path an nvcc >= 12.9 (see
+# comment above). On this A100 (sm_80) box, some other package still
+# transitively pulls a "nvidia/cu13" tree into the venv (unrelated to our
+# torch 2.7.1+cu126 pin) -- forcing CUDA_HOME/PATH to that unrelated CUDA
+# 13.3 toolchain caused flashinfer's sampler kernel to JIT-compile for the
+# wrong architecture ("device kernel image is invalid" at first inference).
+# Simply skipping the pin instead falls back to this box's system nvcc
+# (11.5), which can't parse GCC 11's std_function.h ("parameter packs not
+# expanded") -- the same old-nvcc/new-libstdc++ bug already fixed for the
+# harness venv (see CLAUDE.md). sm_80 needs *a* working nvcc>=12, just not
+# the Blackwell-pinned one -- point it at this probe's own known-good A100
+# toolchain (third_party/cuda-a100-toolchain, nvcc 12.6.20) instead.
+# Parametrized via env var (default unchanged) rather than hand-editing/
+# deleting the block. Confirmed 2026-08-20.
+if [ -n "${KERNEL2X2_CUDA_HOME_OVERRIDE:-}" ]; then
+    CU_DIR="$KERNEL2X2_CUDA_HOME_OVERRIDE"
+    log "KERNEL2X2_CUDA_HOME_OVERRIDE set -- using $CU_DIR instead of the sm_120-only nvidia/cu13 pin"
+else
+    CU_DIR="$($PY -c 'import nvidia, os; print(os.path.join(list(nvidia.__path__)[0], "cu13"))')"
+fi
+if [ -n "$CU_DIR" ] && [ -d "$CU_DIR" ]; then
     NVCC_VER="$("$CU_DIR/bin/nvcc" --version | grep -oP 'release \K[0-9]+\.[0-9]+')"
     log "pinning nvidia-cuda-runtime to match bundled nvcc (release $NVCC_VER)"
     if ! pip install -q "nvidia-cuda-runtime==${NVCC_VER}.*"; then
@@ -294,10 +314,19 @@ if [ "$TARGET" = "gptoss" ]; then
     # actual stability. All three found running this exact script,
     # 2026-08-19. 32768 is generous headroom over this project's actual
     # protocol (prompt + 8192 max output tokens, PROMPT_SPEC.md #4).
+    # [sync-needed] kernel-lang-2x2 A100 probe: these two values were tuned
+    # for the primary box's 97,887 MiB card. This A100 has 80GB -- at the
+    # same 0.85 utilization, gpt-oss-120b's ~66GiB weights leave only ~0.61
+    # GiB for KV cache at max-model-len=32768 (vLLM refuses to start: "1.20
+    # GiB KV cache is needed... estimated maximum model length is 15552").
+    # Parametrized via env vars (defaults unchanged) rather than
+    # hand-editing the hardcoded values. Confirmed 2026-08-20.
+    GPTOSS_MAX_MODEL_LEN="${KERNEL2X2_GPTOSS_MAX_MODEL_LEN:-32768}"
+    GPTOSS_GPU_MEM_UTIL="${KERNEL2X2_GPTOSS_GPU_MEM_UTIL:-0.85}"
     if try_launch "$GPTOSS_REPO" "$GPTOSS_PORT" "$LOG_DIR/gptoss.log" \
-        --max-model-len 32768 --gpu-memory-utilization 0.85 --enforce-eager; then
+        --max-model-len "$GPTOSS_MAX_MODEL_LEN" --gpu-memory-utilization "$GPTOSS_GPU_MEM_UTIL" --enforce-eager; then
         echo "$ATTEMPT_PID" > "$(pidfile gptoss)"
-        write_manifest gptoss "$GPTOSS_REPO" "$GPTOSS_PORT" "$(resolve_hf_revision "$GPTOSS_REPO")" false "" "32768"
+        write_manifest gptoss "$GPTOSS_REPO" "$GPTOSS_PORT" "$(resolve_hf_revision "$GPTOSS_REPO")" false "" "$GPTOSS_MAX_MODEL_LEN"
     else
         log "FATAL: gpt-oss-120b failed to come up. See $LOG_DIR/gptoss.log"
         exit 1
