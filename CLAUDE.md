@@ -49,16 +49,51 @@ ML for Systems @ NeurIPS 2026 워크숍 논문 실험.
 | NVIDIA 드라이버 | 595.84 |
 | CUDA (드라이버 지원) | 13.2 |
 | 시스템 nvcc | 12.0.140 — **sm_120 미지원, 사용 불가** |
+| 시스템 g++ | 13.3.0 — **nvcc 12.8은 13.x를 미지원(host_config.h 하드 에러), g++-12 사용** |
 | 사용 nvcc | `~/.triton/nvidia/nvcc/cuda_nvcc-linux-x86_64-12.8.93-archive/bin/nvcc` (12.8.93) |
-| 사용 ptxas | `~/.local/lib/python3.12/site-packages/triton/backends/nvidia/bin/ptxas` (12.8.93) |
+| 사용 ptxas | 위 nvcc와 동일 배포판 (12.8.93) — `triton` pip 패키지 번들 ptxas도 동일 버전, 상호 대체 가능 |
+| 사용 g++ | `/usr/bin/g++-12` (12.4.0) — apt로 이미 설치돼 있었음 |
+| PTX ISA (nvcc 12.8.93 산출) | `.version 8.7`, `.target sm_120a` — **`.target`은 `sm_120`이 아니라 `sm_120a`** (Blackwell 패밀리 전용 명령 접미사 `a`; 프롬프트 명세에 반영할 것) |
 | Python | 3.12.3 |
 | torch | 2.8.0+cu128 (cuda 12.8, arch_list에 sm_120 포함) |
-| triton | 3.4.0 |
-| tilelang | (설치 예정 — 확정 후 기록) |
+| triton | **3.4.0 — sm_120 스모크 PASS** (`scripts/smoke_triton.py`, 벡터 덧셈, exact match) |
+| tilelang | **0.1.13 — sm_120 스모크 PASS** (`scripts/smoke_tilelang.py`, fp32 elementwise + fp16 tiled matmul 텐서코어 경로 모두 통과) |
+| ninja | 1.13.0 (.venv에 pip 설치, CUDA C++ JIT 확장 빌드에 필요) |
+
+### 툴체인 우회가 필요했던 이유 (재현 시 참고)
+
+1. **시스템 nvcc(12.0)는 `sm_120a`를 모른다** → nvcc 12.8.93(위 경로)을 PATH 앞단에 둠.
+2. **시스템 g++(13.3)는 nvcc 12.8이 거부한다** (`#error unsupported GNU version`) →
+   `CXX=/usr/bin/g++-12`로 고정.
+3. **TileLang 0.1.13의 nvcc 호출부(`jit/adapter/libgen.py`)가 `-I$CUDA_HOME/include`를
+   붙이지 않는다** → PATH만 바꾸면 nvcc가 `/usr/include/cuda_fp8.h`(시스템 CUDA 12.0,
+   Blackwell의 E8M0 FP8 변환 intrinsic 없음)를 집어 컴파일이 깨진다.
+   `CPATH=$CUDA_HOME/include`로 우회(모든 컴파일 경로가 CPATH는 존중함).
+4. `$CUDA_HOME`은 실제 설치본이 아니라 심볼릭 링크로 조립한 것:
+   `third_party/cuda-sm120-toolchain/{bin→nvcc 12.8.93, include/lib64→triton 번들
+   cudart 12.8.57}` — 둘 다 pip 배포 wheel 부산물이라 완전한 CTK가 아님. `nvcc`
+   배포판엔 헤더가, `cudart` 배포판엔 헤더+런타임 라이브러리가 나뉘어 있어서 합쳤음.
+
+**결론: 모든 실험 실행 전에 반드시 `source scripts/env.sh`.** (`generate.py`/
+`evaluate.py` 등 모든 진입 스크립트 최상단 주석에도 명시할 것.) 이 우회가 없으면
+CUDA C++·TileLang 두 트랙은 컴파일 자체가 실패하므로, results/ 안 컴파일 실패가
+"모델의 한계"가 아니라 "환경 설정 누락"으로 오염될 위험이 있다 — 공정성 위협 문서
+(RESEARCH_CONTEXT.md §6) 준하는 통제 항목으로 취급.
 
 > ⚠️ **하드웨어 변경의 함의**: Blackwell은 문서가 상정한 Ampere(A6000)와 성능 특성이
 > 다르다. speedup 분포 해석과 논문 Setup의 하드웨어 기술을 모두 이 값 기준으로 쓸 것.
 > 문헌의 A6000 수치와 비교하지 말 것 (원래 규칙: 베이스라인 매 실행 재측정).
+
+### PTX go/no-go 판정: **GO** (2026-08-19)
+
+`harness/ptx/ptx_harness.py` (ctypes 기반 cuModuleLoad 래퍼, 의존성 없음) +
+`scripts/smoke_ptx.py`로 검증:
+ptxas 어셈블(PTX→cubin) → `cuModuleLoadData` → `cuLaunchKernel` → PyTorch 텐서와
+결과 대조, 전 구간 통과 (exact match). 검증에 쓴 PTX는 `nvcc -arch=sm_120a -ptx`로
+1회 생성한 벡터 덧셈 텍스트(`scripts/fixtures/vecadd.ptx`) — **인프라(래퍼) 검증용
+픽스처이며 LLM PTX 작성 능력의 증거가 아님.** 컴파일 에러 메시지 반환 경로
+(`PTXCompileError.stderr`)도 확보되어 있어 수리 1턴 프로토콜에 바로 연결 가능.
+3언어 후퇴 결정은 필요 없음 — 4언어 전부 진행.
 - 타이밍 프로토콜: warmup 25회, 측정 100회, 중앙값. torch.cuda.synchronize 필수.
   베이스라인은 PyTorch eager, 같은 GPU에서 매 실행 재측정 (문헌 수치 사용 금지).
 ## 디렉터리 구조

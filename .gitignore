@@ -18,3 +18,4 @@ third_party/
 *.cubin
 *.fatbin
 .cache/
+third_party/cuda-sm120-toolchain/
