@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(nvidia-smi)",
+      "Bash(git -C /home/crojjang/kernel-lang-2x2 status)",
+      "Bash(conda env *)",
+      "Bash(python -c \"import torch; print\\(torch.__version__, torch.version.cuda\\)\")",
+      "Bash(python -)",
+      "Bash(python -m venv --system-site-packages .venv)",
+      "Bash(.venv/bin/pip install *)",
+      "Bash(.venv/bin/python -c \"import torch, triton; print\\('venv torch', torch.__version__, 'triton', triton.__version__\\)\")",
+      "Bash(.venv/bin/python -c \"import torch; print\\(torch.__version__\\)\")",
+      "Bash(git clone *)",
+      "Bash(sort -t_ -k1 -n)",
+      "Bash(sort -t_ -k1 -n /tmp/claude-2003/-home-crojjang-kernel-lang-2x2/18a8cb81-fbdd-4f52-bc08-6e4d7d4aa4f1/scratchpad/l1.txt)",
+      "Bash(git add *)",
+      "Bash(git commit *)"
+    ]
+  }
+}

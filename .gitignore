@@ -1,0 +1,20 @@
+# Experiment outputs are read-only DATA, not source. Kept out of git.
+# (CLAUDE.md: results/ 는 읽기 전용 취급, git-lfs 또는 .gitignore)
+results/**/generations/
+results/**/raw/
+results/**/*.log
+
+# Environment
+.venv/
+__pycache__/
+*.pyc
+
+# Third-party checkouts
+third_party/
+
+# Build artifacts from kernel compilation
+*.so
+*.o
+*.cubin
+*.fatbin
+.cache/
