@@ -132,3 +132,72 @@ class CuModuleRunner:
 
     def synchronize(self):
         _check(self.lib, self.lib.cuCtxSynchronize(), "cuCtxSynchronize")
+
+
+# ---------------------------------------------------------------------------
+# ptx_load / ptx_launch: the API surface promised to the LLM by
+# prompts/PROMPT_SPEC.md §2's PTX language block. Generated ModelNew code
+# calls exactly these two names -- keep the signatures in lockstep with the
+# prompt text (a signature change here without a matching PROMPT_SPEC.md
+# change breaks every already-issued PTX prompt for the current run).
+#
+#   module = ptx_load(PTX_SOURCE)
+#   ptx_launch(module, "kernel_name", grid, block, args)
+#
+# Thin wrappers over assemble_ptx + CuModuleRunner above: one lazily-created
+# process-wide runner (so ModelNew doesn't need to construct one), one arch
+# auto-detected from the actual device (so generated code never has to embed
+# it), and a per-(module, name) function-handle cache (cuModuleGetFunction is
+# a real driver call; no need to repeat it on every forward()).
+# ---------------------------------------------------------------------------
+
+_runner: "CuModuleRunner | None" = None
+_module_cache: dict[int, ctypes.c_void_p] = {}
+_function_cache: dict[tuple[int, str], ctypes.c_void_p] = {}
+
+
+def _get_runner() -> "CuModuleRunner":
+    global _runner
+    if _runner is None:
+        _runner = CuModuleRunner(device_index=0)
+    return _runner
+
+
+def _detect_arch() -> str:
+    import torch
+    major, minor = torch.cuda.get_device_capability(0)
+    return f"sm_{major}{minor}a"
+
+
+def ptx_load(ptx_source: str, arch: str | None = None) -> int:
+    """Assemble a PTX module (ptxas) and load it via the CUDA driver.
+
+    Returns an opaque module handle to pass to ptx_launch. Raises
+    PTXCompileError (with .stderr = the raw ptxas message) on assembly
+    failure -- this is what the repair-turn protocol (PROMPT_SPEC.md §3.3)
+    surfaces back to the model verbatim.
+    """
+    runner = _get_runner()
+    cubin = assemble_ptx(ptx_source, arch=arch or _detect_arch())
+    module = ctypes.c_void_p()
+    _check(runner.lib, runner.lib.cuModuleLoadData(ctypes.byref(module), cubin), "cuModuleLoadData")
+    _module_cache[module.value] = module
+    return module.value
+
+
+def ptx_launch(module: int, kernel_name: str, grid: tuple[int, int, int],
+                block: tuple[int, int, int], args: list, shared_mem: int = 0) -> None:
+    """Launch `kernel_name` from a module returned by ptx_load.
+
+    args: device pointers (tensor.data_ptr()) and/or plain Python ints for
+    scalar kernel parameters, in the exact order of the kernel's .param list.
+    """
+    runner = _get_runner()
+    key = (module, kernel_name)
+    if key not in _function_cache:
+        mod_handle = _module_cache[module]
+        function = ctypes.c_void_p()
+        _check(runner.lib, runner.lib.cuModuleGetFunction(ctypes.byref(function), mod_handle, kernel_name.encode()),
+               "cuModuleGetFunction")
+        _function_cache[key] = function
+    runner.launch(_function_cache[key], grid=grid, block=block, args=args, shared_mem=shared_mem)

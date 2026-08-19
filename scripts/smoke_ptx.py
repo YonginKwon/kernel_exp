@@ -1,8 +1,10 @@
 """PTX go/no-go smoke test (CLAUDE.md 8/10 milestone).
 
-Verifies the harness/ptx cuModuleLoad wrapper end-to-end on this machine's actual
-GPU: ptxas assembly -> cuModuleLoadData -> cuLaunchKernel -> correct result,
-sharing PyTorch's CUDA context so tensor.data_ptr() is a valid device pointer.
+Verifies harness/ptx's LLM-facing API (ptx_load / ptx_launch, exactly as
+promised by prompts/PROMPT_SPEC.md §2's PTX language block) end-to-end on
+this machine's actual GPU: ptxas assembly -> cuModuleLoadData ->
+cuLaunchKernel -> correct result, sharing PyTorch's CUDA context so
+tensor.data_ptr() is a valid device pointer.
 
 Fixture PTX (vecadd.ptx) was produced once via `nvcc -arch=sm_120a -ptx` from a
 throwaway .cu file, purely to get a real, driver-valid PTX text targeting this
@@ -13,7 +15,7 @@ import sys
 import torch
 
 sys.path.insert(0, "harness/ptx")
-from ptx_harness import assemble_ptx, CuModuleRunner, PTXCompileError
+from ptx_harness import ptx_load, ptx_launch, PTXCompileError
 
 PTX_SRC = open("scripts/fixtures/vecadd.ptx").read()
 
@@ -21,21 +23,16 @@ PTX_SRC = open("scripts/fixtures/vecadd.ptx").read()
 def main():
     dev = torch.device("cuda:0")
     cc = torch.cuda.get_device_capability(dev)
-    arch = f"sm_{cc[0]}{cc[1]}a"  # 'a' suffix: Blackwell family-specific ISA, matches CLAUDE.md's sm_120
-    print(f"[env] gpu={torch.cuda.get_device_name(dev)} cc={cc} arch={arch}")
+    print(f"[env] gpu={torch.cuda.get_device_name(dev)} cc={cc}")
+
+    torch.cuda.init()  # ensure torch's primary context exists before ptx_load shares it
 
     try:
-        cubin = assemble_ptx(PTX_SRC, arch=arch)
+        module = ptx_load(PTX_SRC)
     except PTXCompileError as e:
-        print(f"[result] ptxas assemble: FAIL\n{e.stderr}")
+        print(f"[result] ptx_load (ptxas assemble): FAIL\n{e.stderr}")
         return 1
-    print(f"[result] ptxas assemble: PASS ({len(cubin)} bytes cubin)")
-
-    # touch cuda so torch's primary context exists before we retain/share it
-    torch.cuda.init()
-
-    runner = CuModuleRunner(device_index=0)
-    fn = runner.load(cubin, "vecadd")
+    print("[result] ptx_load (ptxas assemble + cuModuleLoadData): PASS")
 
     n = 1 << 20
     x = torch.randn(n, device=dev)
@@ -44,12 +41,12 @@ def main():
 
     block = 256
     grid = ((n + block - 1) // block, 1, 1)
-    runner.launch(fn, grid=grid, block=(block, 1, 1),
-                  args=[x.data_ptr(), y.data_ptr(), out.data_ptr(), n])
-    runner.synchronize()
+    ptx_launch(module, "vecadd", grid, (block, 1, 1),
+               [x.data_ptr(), y.data_ptr(), out.data_ptr(), n])
+    torch.cuda.synchronize(dev)
 
     ok = torch.allclose(out, x + y, atol=1e-4, rtol=1e-4)
-    print(f"[result] cuModuleLoad + cuLaunchKernel: {'PASS' if ok else 'FAIL'} "
+    print(f"[result] ptx_launch + cuLaunchKernel: {'PASS' if ok else 'FAIL'} "
           f"max_diff={(out - (x + y)).abs().max().item():.3e}")
     return 0 if ok else 1
 

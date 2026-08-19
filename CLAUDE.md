@@ -143,8 +143,23 @@ kernel-lang-2x2/
  
 ## 마일스톤
  
-- 8/10: 과제 선정 완료, 4개 하니스 스모크 테스트 통과, **PTX go/no-go 판정**
-- 8/17: 본 실험(~1,600 생성) + 문서 ablation(~800) 실행 완료
+- 8/10: 과제 선정 완료, 4개 하니스 스모크 테스트 통과, **PTX go/no-go 판정** — 완료
+- 8/17: 본 실험(~1,600 생성) + 문서 ablation(~800) 실행 완료 — **도구는 준비됨,
+  실행은 아직.** `scripts/generate.py`(유일한 생성 경로, 규칙 2 준수) +
+  `prompts/spec_loader.py`(PROMPT_SPEC.md를 파싱하는 유일한 진입점, 템플릿 중복
+  없음) + `prompts/specs/{cuda,ptx,triton,tilelang}.md`(문서 주입용, 각
+  4500–4815 토큰, 출처는 `prompts/specs/SOURCES.md`) 작성 완료.
+  `--dry-run`으로 4언어 전부 프롬프트 생성·비용 추산 검증, `litellm mock_response`로
+  로깅 파이프라인(모델 버전·temperature·seed·프롬프트 해시+원문·타임스탬프·
+  torch/CUDA/드라이버 버전·응답 원문 — 규칙 4 전 항목)과 응답 파싱(`generated`/
+  `format_failure`/`truncated` 세 상태 분기) 전부 확인함. **실제 실행 전 남은 것**:
+  ① OPENAI_API_KEY/ANTHROPIC_API_KEY 미설정 — 아직 실제 API 호출 없음,
+  ② 모델 버전 문자열 미확정 — "OpenAI GPT 최신 1개 + Anthropic Claude 최신 1개"를
+  구체적 버전 문자열로 PI가 고정해야 `generate.py --provider-model`에 넣고 실행
+  가능 (`scripts/generate.py`가 기본값을 두지 않고 필수 인자로 강제해둠 — 임의
+  추측 방지), ③ 문서 ablation 20개 부분집합은 여전히 미승인(`tasks/SELECTION.md`
+  §4.2) — `--condition docinject`는 코드 레벨에서 승인 전까지 자동 거부하도록
+  만들어둠.
 - 8/24: 분석 완료, 초고
 - 8/29: 제출
 ## 작업 방식
