@@ -35,6 +35,7 @@ has to remember to add the check later once timing does land.
 """
 import argparse
 import json
+import multiprocessing as mp
 import os
 import shutil
 import subprocess
@@ -66,6 +67,40 @@ sys.path.insert(0, str(REPO_ROOT / "harness" / "ptx"))
 _captured_subprocess_output: list[str] = []
 
 import torch  # noqa: E402
+import torch.utils.cpp_extension as _cpp_extension  # noqa: E402
+
+# NOTE (2026-08-19, PI-approved -- see prompts/PROMPT_SPEC.md §7 change
+# history): 27.6% (51/185) of Qwen3-Coder-30B-A3B-Instruct's generated CUDA
+# samples call load_inline(..., extra_cuda_cflags=[..., "-std=c++14"]) --
+# boilerplate the model writes itself, unrelated to kernel correctness. This
+# server's PyTorch/ATen requires C++17, and torch's cpp_extension only
+# appends its own "-std=c++17" default when no "-std=" flag is already
+# present in cuda_flags -- so the model's stale flag silently wins and every
+# such sample fails to compile for a reason that has nothing to do with the
+# kernel logic being tested (gpt-oss-120b: 0/185, doesn't do this). Same
+# principle as the (not-triggered) architecture-flag branch from the CUDA
+# probe: the harness owns toolchain-level flags, not the model. Strip any
+# model-supplied -std= flag here so torch's own default (C++17) always
+# applies; PROMPT_SPEC's CUDA block also now tells the model not to pass one.
+def _strip_std_flags(flags):
+    if not flags:
+        return flags
+    return [f for f in flags if not str(f).startswith("-std=")]
+
+
+def _make_std_flag_stripping_wrapper(original_fn):
+    def _wrapped(*args, **kwargs):
+        if "extra_cflags" in kwargs:
+            kwargs["extra_cflags"] = _strip_std_flags(kwargs["extra_cflags"])
+        if "extra_cuda_cflags" in kwargs:
+            kwargs["extra_cuda_cflags"] = _strip_std_flags(kwargs["extra_cuda_cflags"])
+        return original_fn(*args, **kwargs)
+    return _wrapped
+
+
+_cpp_extension.load_inline = _make_std_flag_stripping_wrapper(_cpp_extension.load_inline)
+_cpp_extension.load = _make_std_flag_stripping_wrapper(_cpp_extension.load)
+
 from kernelbench import eval as kb_eval  # noqa: E402
 
 RAW_DIR = REPO_ROOT / "results" / "raw"
@@ -310,11 +345,71 @@ def eval_one(record: dict, device) -> dict:
     }
 
 
-def run_eval(language=None, condition=None, model_dir=None, task=None, raw_dir=RAW_DIR):
+def _eval_worker_entry(record, result_conn):
+    """Runs in an isolated (spawn) subprocess -- see eval_one_isolated()."""
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    try:
+        result = eval_one(record, device)
+    except Exception as e:
+        result = {"compiled": False, "correctness": False,
+                   "eval_exception": f"{type(e).__name__}: {e}"}
+    try:
+        result_conn.send(result)
+    finally:
+        result_conn.close()
+
+
+def eval_one_isolated(record: dict, timeout: int = 300) -> dict:
+    """Runs eval_one() in a fresh subprocess (multiprocessing 'spawn').
+
+    NOTE (2026-08-20): a genuinely buggy generated kernel can trigger a CUDA
+    "illegal memory access" during the correctness check. That corrupts the
+    CUDA context for the rest of the process -- confirmed empirically: the
+    2026-08-19 full-run attempt hit exactly this on a Triton sample, and the
+    NEXT sample's cleanup (`torch.cuda.empty_cache()` in eval_one's `finally`)
+    raised an uncaught torch.AcceleratorError that killed the whole
+    evaluate.py process. Since results were only written to disk once, at
+    the very end, that lost all progress on the ~1,480-sample run. Isolating
+    each sample in its own subprocess means a corrupted context (or any other
+    crash/hang) only kills that one sample's subprocess -- the parent process
+    (and the incremental checkpoint in run_eval) is unaffected. A subprocess
+    that dies or exceeds `timeout` without sending a result is recorded as an
+    eval_exception, not silently dropped."""
+    ctx = mp.get_context("spawn")
+    parent_conn, child_conn = ctx.Pipe(duplex=False)
+    proc = ctx.Process(target=_eval_worker_entry, args=(record, child_conn))
+    proc.start()
+    child_conn.close()
+
+    result = None
+    if parent_conn.poll(timeout):
+        try:
+            result = parent_conn.recv()
+        except EOFError:
+            result = None
+    parent_conn.close()
+
+    proc.join(timeout=10)
+    if proc.is_alive():
+        proc.terminate()
+        proc.join(timeout=10)
+    if proc.is_alive():
+        proc.kill()
+        proc.join()
+
+    if result is not None:
+        return result
+    return {"compiled": False, "correctness": False,
+            "eval_exception": f"eval subprocess produced no result "
+                               f"(exitcode={proc.exitcode}) -- likely a CUDA "
+                               f"context crash (e.g. illegal memory access) "
+                               f"or a hang killed after a {timeout}s timeout"}
+
+
+def run_eval(language=None, condition=None, model_dir=None, task=None, raw_dir=RAW_DIR, checkpoint_path=None):
     records = []
     for path, record in find_samples(language, condition, model_dir, task, raw_dir):
-        result = eval_one(record, device)
+        result = eval_one_isolated(record)
         entry = {
             "path": str(path.relative_to(raw_dir)),
             "task": record["task"], "task_family": record.get("task_family"),
@@ -328,6 +423,13 @@ def run_eval(language=None, condition=None, model_dir=None, task=None, raw_dir=R
             ("PASS" if result.get("correctness") else ("COMPILED_WRONG" if result.get("compiled") else "COMPILE_FAIL"))
         print(f"[eval] {record['language']:8s} {record['task']:35s} sample={record['sample_index']} "
               f"gen={record['status']:15s} -> {status_str}")
+        # Checkpoint after every sample (2026-08-20, see eval_one_isolated's
+        # docstring) -- a crash mid-run now loses at most one sample's worth
+        # of work instead of the entire run.
+        if checkpoint_path is not None:
+            checkpoint_path.write_text(json.dumps(
+                {"summary": summarize(records), "records": records, "status": "in_progress"},
+                indent=2, default=str))
     return records
 
 
@@ -358,7 +460,11 @@ def main():
 
     assert_gpu_exclusive()
 
-    records = run_eval(args.language, args.condition, args.model_dir, args.task, Path(args.raw_dir))
+    EVAL_DIR.mkdir(parents=True, exist_ok=True)
+    out_path = Path(args.out) if args.out else EVAL_DIR / f"eval_{time.strftime('%Y%m%dT%H%M%S')}.json"
+
+    records = run_eval(args.language, args.condition, args.model_dir, args.task, Path(args.raw_dir),
+                        checkpoint_path=out_path)
     summary = summarize(records)
 
     print("\n=== summary (compiled / correct out of n, generated=parsed-ok count) ===")
@@ -366,8 +472,6 @@ def main():
         print(f"  {lang:8s} n={d['n']:3d} generated={d['generated']:3d} "
               f"compiled={d['compiled']:3d} correct={d['correct']:3d}")
 
-    EVAL_DIR.mkdir(parents=True, exist_ok=True)
-    out_path = Path(args.out) if args.out else EVAL_DIR / f"eval_{time.strftime('%Y%m%dT%H%M%S')}.json"
     out_path.write_text(json.dumps({"summary": summary, "records": records}, indent=2, default=str))
     print(f"\nwrote {out_path}")
     return 0

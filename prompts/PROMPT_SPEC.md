@@ -39,6 +39,9 @@ Reference implementation:
 Write CUDA C++ using inline PyTorch extension conventions
 (torch.utils.cpp_extension.load_inline). Provide the full Python file
 defining ModelNew that compiles and launches your CUDA kernel.
+Do not pass a -std= (C++ standard) flag in extra_cflags or
+extra_cuda_cflags; the harness supplies the required C++ standard
+uniformly and overrides any you provide.
 ```
 
 ### Triton
@@ -121,3 +124,19 @@ Provide the corrected complete solution in a single code block.
   실패가 PTX 표현력 측정과 무관하게 결과를 오염시킴 — 현 수준이 그 중간점.
 - **accumulation 정밀도: 자유(§1 원안대로).** fp32 강제하지 않음. 근거:
   정밀도 전략 선택도 언어 표현력의 일부로 취급.
+
+## 7. 변경 이력
+
+- **2026-08-19: CUDA 블록에 "-std= 플래그 금지" 문구 추가 (PI 승인).**
+  근거: 본 실행(37과제×4언어×5샘플×2모델) 평가 중 Qwen3-Coder-30B-A3B-Instruct가
+  생성한 CUDA 샘플의 27.6%(51/185)가 `load_inline`의 `extra_cuda_cflags`에
+  `-std=c++14`를 직접 지정, 이 서버의 PyTorch/ATen(C++17 요구)과 충돌해
+  커널 로직과 무관하게 컴파일 실패했다 (gpt-oss-120b는 0/185, 이 패턴 없음).
+  CUDA 프로브(②)가 다룬 아키텍처 플래그 지배성 판정과 별개의 문제이며, 프로브가
+  사용한 4과제 표본에서는 우연히 나타나지 않아 사전에 포착되지 못했다. 아키텍처
+  플래그 사례와 동일한 원칙(하니스가 툴체인 종속 플래그를 일괄 공급하고 모델
+  제공 값을 무시)을 적용하기로 PI 승인 (2026-08-19). 하니스 변경은
+  `scripts/evaluate.py`의 CUDA 빌드 경로(모델이 지정한 `-std=` 플래그를
+  `extra_cflags`/`extra_cuda_cflags`에서 제거 후 C++17 고정); 아키텍처 플래그는
+  프로브 판정대로 변경하지 않음. 영향받은 51개 Qwen CUDA 샘플은 하니스 수정 후
+  재평가(재생성 아님 — 하니스 레벨 수정이므로).
