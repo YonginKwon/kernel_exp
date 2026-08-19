@@ -35,14 +35,35 @@ has to remember to add the check later once timing does land.
 """
 import argparse
 import json
+import os
+import shutil
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(REPO_ROOT / "third_party" / "KernelBench" / "src"))
 sys.path.insert(0, str(REPO_ROOT / "harness" / "ptx"))
+
+# NOTE (2026-08-19): tried monkeypatching subprocess.run globally here to
+# force-capture nvcc/ninja/g++ output for every compile failure (torch's
+# build-failure path sometimes raises a bare
+# `RuntimeError("Error building extension 'name'")` with no compiler output
+# attached -- confirmed the real diagnostic exists, it just doesn't always
+# reach str(exception)). Reverted: across ~40 sequential compiles in one
+# process it produced spurious "Ninja is required to load C++ extensions"
+# failures on EVERY sample -- is_ninja_available()'s `except Exception:
+# return False` was swallowing something (most likely descriptor/resource
+# pressure from forcing capture_output=True on every subprocess.run call in
+# the process, including internal ones this script doesn't care about) that
+# only manifests at that scale, not in an isolated single-sample repro. Not
+# worth the risk for the full ~1,480-sample run. When a compile failure's
+# `metadata.compilation_error` is short and uninformative, reproduce that
+# one sample in a fresh, isolated process instead (see the CUDA probe
+# classification notes, tasks/ or CLAUDE.md) rather than capturing globally.
+_captured_subprocess_output: list[str] = []
 
 import torch  # noqa: E402
 from kernelbench import eval as kb_eval  # noqa: E402
@@ -158,6 +179,54 @@ def eval_ptx(code: str, ref_src: str, device):
     )
 
 
+def _attach_captured_output(metadata: dict):
+    """Merge whatever subprocess.run captured (see the module-level monkeypatch
+    above) into a compile-failure metadata dict in place -- torch's own
+    exception message is sometimes just "Error building extension 'name'"
+    with the real nvcc/g++ diagnostic never making it past the subprocess's
+    stdout, so this is the only reliable way to keep it in results/eval/."""
+    if not _captured_subprocess_output:
+        return
+    full = "\n".join(_captured_subprocess_output)[-4000:]
+    existing = metadata.get("compilation_error", "")
+    if len(full) > len(existing):
+        metadata["compilation_error_full_stdout"] = full
+
+
+def _recover_real_compile_error(code: str, language: str, build_dir: str | None = None) -> dict:
+    """KernelBench's eval_kernel_against_ref() returns None (not a
+    KernelExecResult) when it thinks compilation hit transient lock
+    contention -- its own detection is `"lock" in str(exception)`, a loose
+    substring match. Confirmed empirically (2026-08-19 CUDA probe, 7/40
+    samples) that this also fires on genuine compile errors whose text
+    happens to contain the word "lock" incidentally, silently discarding a
+    real compile failure as "please retry" forever. This redoes the load
+    directly (mirroring eval_kernel_against_ref's own backend dispatch) to
+    capture the actual exception text instead of losing it."""
+    context = {}
+    try:
+        if language in ("triton", "tilelang"):
+            ModelNew, tf = kb_eval.load_custom_model_with_tempfile(code, entry_point="ModelNew")
+            if tf:
+                tf.close()
+                os_remove_quiet(tf.name)
+        else:
+            kb_eval.load_custom_model(code, context, build_directory=build_dir)
+    except Exception as e:
+        return {"compilation_error_name": type(e).__name__,
+                "compilation_error": str(e)[:4000],
+                "recovered_from": "kernelbench_false_positive_lock_retry"}
+    # Loading succeeded on retry with no exception -- genuinely transient.
+    return None
+
+
+def os_remove_quiet(path):
+    try:
+        os.remove(path)
+    except OSError:
+        pass
+
+
 def eval_one(record: dict, device) -> dict:
     if record["status"] != "generated":
         return {"compiled": False, "correctness": False, "eval_skipped_reason": record["status"]}
@@ -166,13 +235,57 @@ def eval_one(record: dict, device) -> dict:
     ref_src = load_reference(record["task"])
     language = record["language"]
 
+    # CUDA backend only: give every sample its own build directory instead of
+    # PyTorch's shared default (~/.cache/torch_extensions/<...>/<name>/).
+    # Different generated samples routinely pick the same generic extension
+    # name (e.g. "relu_cuda", "matmul_ext") -- with a shared cache dir this
+    # causes real cross-sample corruption (one sample's failed/partial build
+    # leaves stale artifacts that a later, unrelated sample with the same
+    # name then fails to load: "... .so: cannot open shared object file"),
+    # not because that later sample's own code is broken. Confirmed
+    # empirically during the 2026-08-19 CUDA probe. Triton/TileLang don't
+    # need this -- they load via tempfile, not the named extension cache.
+    #
+    # IMPORTANT: each *attempt* below (initial try, retry, recovery) needs
+    # its OWN fresh build_dir, not a shared one -- reusing one directory
+    # across attempts leaves ninja's incremental-build state (.ninja_log)
+    # from the first (failed) attempt in place, and a later attempt's ninja
+    # invocation then treats stale/partial artifacts as "already built" and
+    # no-ops instead of recompiling, producing a *different* failure
+    # ("... .so: cannot open shared object file", because the .so was never
+    # actually linked) that masks the real compiler error. Confirmed
+    # empirically -- this is exactly what happened the first time this
+    # retry logic was added, 2026-08-19.
+    build_dirs = []
+
+    def fresh_build_dir():
+        d = tempfile.mkdtemp(prefix="k2x2_eval_")
+        build_dirs.append(d)
+        return d
+
+    _captured_subprocess_output.clear()
     try:
         if language in ("cuda", "triton", "tilelang"):
             result = kb_eval.eval_kernel_against_ref(
                 original_model_src=ref_src, custom_model_src=code, backend=language,
                 precision=PRECISION, measure_performance=False, verbose=False, device=device,
+                build_dir=fresh_build_dir() if language == "cuda" else None,
             )
             if result is None:
+                # Retry once with a FRESH build dir (genuine transient
+                # contention would clear by now); fall back to capturing the
+                # real error, also with a fresh dir, if it's still None.
+                result = kb_eval.eval_kernel_against_ref(
+                    original_model_src=ref_src, custom_model_src=code, backend=language,
+                    precision=PRECISION, measure_performance=False, verbose=False, device=device,
+                    build_dir=fresh_build_dir() if language == "cuda" else None,
+                )
+            if result is None:
+                recovered = _recover_real_compile_error(
+                    code, language, build_dir=fresh_build_dir() if language == "cuda" else None)
+                if recovered is not None:
+                    _attach_captured_output(recovered)
+                    return {"compiled": False, "correctness": False, "metadata": recovered}
                 return {"compiled": False, "correctness": False, "eval_skipped_reason": "lock_retry"}
         elif language == "ptx":
             result = eval_ptx(code, ref_src, device)
@@ -184,11 +297,16 @@ def eval_one(record: dict, device) -> dict:
     finally:
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
+        for d in build_dirs:
+            shutil.rmtree(d, ignore_errors=True)
 
+    metadata = {k: str(v)[:2000] for k, v in result.metadata.items()}
+    if not result.compiled:
+        _attach_captured_output(metadata)
     return {
         "compiled": result.compiled,
         "correctness": result.correctness,
-        "metadata": {k: str(v)[:2000] for k, v in result.metadata.items()},
+        "metadata": metadata,
     }
 
 

@@ -186,6 +186,60 @@ API 키는 없음 — vLLM은 인증하지 않으므로 더미 문자열을 Open
 로직은 코드에 남겨두되 `--try-next-fp8`로만 opt-in — 향후 vLLM/flashinfer가
 이 아키텍처를 지원하게 되면 재시도해볼 수 있도록).
 
+### CUDA 프로브 판정: **API/문법 지배적 — 하니스·프롬프트 변경 없음** (2026-08-19)
+
+파일럿에서 CUDA가 두 모델 다 8/8 컴파일 실패로 나온 것에 대해, 본 실행 전 CUDA만
+4과제(1_Square_matrix_multiplication_, 19_ReLU, 40_LayerNorm,
+50_conv_standard_2D__square_input__square_kernel) × 5샘플 × 2모델 = 40건을 별도
+프로브. 결과: 5/40 컴파일 성공, 0/40 정답, 33/40 컴파일 실패. **33건 전부 직접
+재현해 실제 원인을 확인**(단순 에러 문자열 재활용이 아니라 각 샘플을 격리된
+디렉터리에서 개별 컴파일해 원문 진단 확보):
+
+| 범주 | 건수 (33 중) | 비율 |
+|------|------|------|
+| 아키텍처 플래그 | 3 | 9% |
+| include 누락 | 0 | 0% |
+| **API/문법** | **30** | **91%** |
+
+- **아키텍처 플래그 (3건)**: 전부 모델이 `extra_cuda_cflags=['-std=c++14', ...]`를
+  직접 지정해서 발생 — ATen 헤더가 `#error You need C++17`로 즉시 컴파일 중단.
+  (참고: 1건은 `-gencode arch=compute_90,code=sm_90`(Hopper, 이 GPU 아님)을
+  추가로 지정했지만 이건 컴파일을 막지 않았음 — nvcc가 여러 아키텍처를 동시에
+  타깃할 수 있어서 무해한 낭비였을 뿐, 실제 차단 원인은 별도의 API/문법 오류였음.
+  그래도 "모델이 이 GPU 아키텍처를 모른다"는 신호로는 유효.)
+- **API/문법 (30건, 압도적 다수)**: 반복되는 패턴은 `load_inline(functions=[...])`에
+  적힌 함수 이름과 실제 `cuda_source`에 정의한 함수 이름/시그니처가 불일치
+  (`'X' was not declared in this scope`) — cpp 쪽 pybind 바인딩과 cuda 쪽 정의를
+  맞추지 못하는 구조적 실수가 가장 흔함. 그 외: 존재하지 않는 CUDA 내장 함수를
+  지어냄(예: `__hzero()`), `half`↔`float` 암시적 변환 오류, 디바이스 전용 코드
+  (`blockIdx`/`threadIdx`/커널 launch `<<<>>>`)를 `cpp_sources`(g++가 컴파일하는
+  호스트 코드)에 잘못 넣는 구조적 혼동.
+- **include 누락 (0건)**: 이번 프로브에서는 단 한 건도 없었음.
+
+**결정 (사용자 지시 그대로 적용): API/문법이 지배적이므로 하니스·PROMPT_SPEC 변경
+없음.** `harness/cuda`나 `prompts/PROMPT_SPEC.md`의 CUDA 블록은 그대로 둔다.
+회복 확인 재프로브도 불필요(변경이 없으므로).
+
+**프로브 과정에서 발견해 고친 진짜 하니스 버그 (본 실행 전 필수, `scripts/evaluate.py`
+에 반영됨)**:
+1. KernelBench의 `eval_kernel_against_ref`가 "lock contention"으로 오판해 `None`을
+   반환하는 조건(`"lock" in str(exception)`)이 진짜 컴파일 에러 텍스트에도 우연히
+   "lock" 단어가 들어있으면 오발동 — 실패를 조용히 "재시도 필요"로 묻어버림.
+   `evaluate.py`가 이제 1회 재시도 후에도 `None`이면 `load_custom_model`을 직접
+   재호출해 실제 에러 텍스트를 복구.
+2. 여러 샘플이 흔한 확장 이름(`relu_cuda`, `matmul_ext` 등)을 재사용하면서 PyTorch
+   전역 빌드 캐시(`~/.cache/torch_extensions`)에서 서로 충돌 — 한 샘플의 실패한
+   빌드 잔재가 이름이 같은 다른 샘플의 로드를 깨뜨림. `evaluate.py`가 이제 CUDA
+   샘플마다(그리고 재시도마다도 각각 새로) 격리된 임시 build_dir을 사용.
+3. (시도했다가 되돌림) `subprocess.run`을 전역 monkeypatch해서 컴파일러 출력을
+   항상 캡처하려 했으나, 프로세스 하나에서 수십 회 반복 시 `is_ninja_available()`의
+   `except Exception: return False`가 무언가(리소스 압박으로 추정)를 삼켜 전체
+   샘플이 "Ninja is required"로 오분류되는 부작용 발생 — 되돌림. 본 실행 규모
+   (1,480건)에서 위험 대비 이득이 낮다고 판단. 결과: 컴파일 실패 메시지가 가끔
+   `"Error building extension 'X'"`처럼 짧게만 기록될 수 있음(원인 텍스트는
+   ninja/nvcc의 표준출력에만 존재) — 이번 프로브처럼 필요하면 해당 샘플만 개별
+   격리 프로세스로 재현해서 진단하면 된다.
+
 ### PTX go/no-go 판정: **GO** (2026-08-19)
 
 `harness/ptx/ptx_harness.py` (ctypes 기반 cuModuleLoad 래퍼, 의존성 없음) +
