@@ -1,0 +1,88 @@
+{
+  "_comment": "KernelBench Level 1 subset selected for kernel-lang-2x2. Source files are unmodified copies of third_party/KernelBench/KernelBench/level1/*.py. This file is selection metadata only -- no kernel code. See tasks/SELECTION.md for the criteria and the excluded-family rationale (RESEARCH_CONTEXT.md #6.2).",
+  "source_commit_pinned_by": "shallow clone of ScalingIntelligence/KernelBench, third_party/KernelBench (depth=1, 2026-08-19)",
+  "count": 37,
+  "families": {
+    "matmul": [
+      "1_Square_matrix_multiplication_",
+      "2_Standard_matrix_multiplication_",
+      "3_Batched_matrix_multiplication",
+      "4_Matrix_vector_multiplication_",
+      "6_Matmul_with_large_K_dimension_",
+      "8_Matmul_with_irregular_shapes_",
+      "17_Matmul_with_transposed_B"
+    ],
+    "elementwise_activation": [
+      "19_ReLU",
+      "21_Sigmoid",
+      "22_Tanh",
+      "25_Swish",
+      "26_GELU_",
+      "23_Softmax"
+    ],
+    "normalization": [
+      "33_BatchNorm",
+      "35_GroupNorm_",
+      "36_RMSNorm_",
+      "40_LayerNorm",
+      "39_L2Norm_"
+    ],
+    "pooling": [
+      "41_Max_Pooling_1D",
+      "42_Max_Pooling_2D",
+      "44_Average_Pooling_1D"
+    ],
+    "reduction": [
+      "47_Sum_reduction_over_a_dimension",
+      "48_Mean_reduction_over_a_dimension",
+      "49_Max_reduction_over_a_dimension",
+      "51_Argmax_over_a_dimension"
+    ],
+    "convolution": [
+      "50_conv_standard_2D__square_input__square_kernel",
+      "67_conv_standard_1D",
+      "54_conv_standard_3D__square_input__square_kernel",
+      "82_conv_depthwise_2D_square_input_square_kernel",
+      "57_conv_transposed_2D__square_input__square_kernel",
+      "76_conv_standard_1D_dilated_strided__"
+    ],
+    "cumulative_scan": [
+      "89_cumsum",
+      "90_cumprod"
+    ],
+    "loss": [
+      "94_MSELoss",
+      "95_CrossEntropyLoss",
+      "100_HingeLoss"
+    ],
+    "attention": [
+      "97_ScaledDotProductAttention"
+    ]
+  },
+  "doc_ablation_subset_of_20": {
+    "_comment": "RESEARCH_CONTEXT.md #5: doc-injection ablation runs on a 20-task subset. Placeholder selection -- 2-3 per family, weighted toward families most likely to show HRPL/LRPL gaps (matmul, conv, attention). Needs PI sign-off before use (CLAUDE.md rule 3: prompt/protocol changes need shared, documented treatment across all 4 languages).",
+    "status": "PROPOSED, not yet approved",
+    "tasks": [
+      "1_Square_matrix_multiplication_",
+      "3_Batched_matrix_multiplication",
+      "6_Matmul_with_large_K_dimension_",
+      "17_Matmul_with_transposed_B",
+      "19_ReLU",
+      "23_Softmax",
+      "26_GELU_",
+      "35_GroupNorm_",
+      "36_RMSNorm_",
+      "40_LayerNorm",
+      "42_Max_Pooling_2D",
+      "47_Sum_reduction_over_a_dimension",
+      "51_Argmax_over_a_dimension",
+      "50_conv_standard_2D__square_input__square_kernel",
+      "54_conv_standard_3D__square_input__square_kernel",
+      "57_conv_transposed_2D__square_input__square_kernel",
+      "82_conv_depthwise_2D_square_input_square_kernel",
+      "89_cumsum",
+      "95_CrossEntropyLoss",
+      "97_ScaledDotProductAttention"
+    ]
+  }
+}

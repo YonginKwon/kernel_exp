@@ -1,0 +1,24 @@
+# kernel-lang-2x2 — pinned deps, verified 2026-08-19 on this machine.
+# torch/triton are older than KernelBench upstream's own pin (torch==2.9.*,
+# triton==3.5.*, see third_party/KernelBench/requirements.txt) -- we did NOT
+# upgrade them, because the currently installed pair (torch 2.8.0+cu128,
+# triton 3.4.0) already passed every 8/10 smoke test on this GPU (sm_120,
+# see CLAUDE.md). Upgrading is optional future work, not required for go/no-go.
+# Install with: pip install -r requirements.txt --extra-index-url (none needed,
+# all on PyPI). torch/triton were already present from the base image and are
+# left unpinned here to avoid an accidental reinstall/downgrade.
+
+tilelang==0.1.13
+ninja==1.13.0
+
+# KernelBench's own package (third_party/KernelBench/src/kernelbench) needs these
+# to import, even though eval_kernel_against_ref() itself makes no LLM calls:
+python-dotenv==1.2.3
+pydantic==2.13.4
+einops==0.8.2
+tomli==2.4.1
+tabulate==0.10.0
+packaging==25.0
+pydra-config==0.0.17.post1
+openai==2.54.0
+litellm==1.97.0

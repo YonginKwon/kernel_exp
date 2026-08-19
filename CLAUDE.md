@@ -74,6 +74,11 @@ ML for Systems @ NeurIPS 2026 워크숍 논문 실험.
    cudart 12.8.57}` — 둘 다 pip 배포 wheel 부산물이라 완전한 CTK가 아님. `nvcc`
    배포판엔 헤더가, `cudart` 배포판엔 헤더+런타임 라이브러리가 나뉘어 있어서 합쳤음.
 
+패키지 고정 목록: `requirements.txt` (`pip install -r requirements.txt`, venv `.venv`
+안에서). torch/triton은 이미 설치돼 있던 버전(2.8.0+cu128 / 3.4.0)을 그대로 씀 —
+KernelBench 상류 pin(torch 2.9.*, triton 3.5.*)보다 낮지만 8/10 스모크를 전부
+통과했으므로 업그레이드는 선택 사항으로 미룸.
+
 **결론: 모든 실험 실행 전에 반드시 `source scripts/env.sh`.** (`generate.py`/
 `evaluate.py` 등 모든 진입 스크립트 최상단 주석에도 명시할 것.) 이 우회가 없으면
 CUDA C++·TileLang 두 트랙은 컴파일 자체가 실패하므로, results/ 안 컴파일 실패가
@@ -94,6 +99,21 @@ ptxas 어셈블(PTX→cubin) → `cuModuleLoadData` → `cuLaunchKernel` → PyT
 픽스처이며 LLM PTX 작성 능력의 증거가 아님.** 컴파일 에러 메시지 반환 경로
 (`PTXCompileError.stderr`)도 확보되어 있어 수리 1턴 프로토콜에 바로 연결 가능.
 3언어 후퇴 결정은 필요 없음 — 4언어 전부 진행.
+
+### 4개 하니스 스모크 테스트: **통과** (2026-08-19)
+
+- CUDA / Triton / TileLang 3개는 KernelBench 자체 하니스
+  (`eval.py:eval_kernel_against_ref`, `backend="cuda"/"triton"/"tilelang"`)를
+  그대로 재사용 — CLAUDE.md 디렉터리 구조가 예고한 대로 신규 코드 불필요.
+  KernelBench 자체 예시 픽스처(`prompts/model_ex_add.py` +
+  `model_new_ex_add{,_triton,_tilelang}.py`, 우리가 작성한 게 아님)로
+  `scripts/smoke_kernelbench_harness.py`가 3개 백엔드 전부 compiled=True,
+  correctness=True 확인.
+- PTX는 상류에 backend 자체가 없어 `harness/ptx/ptx_harness.py` 신규 작성 —
+  위 PTX go/no-go 절 참고.
+- 과제 선정: `tasks/level1_subset.json` + `tasks/SELECTION.md` — Level 1 100개 중
+  37개, 선정 기준·제외 근거 문서화. **TileLang 정밀도(fp16/bf16 강제) 처리 방식은
+  PI 미결 — SELECTION.md §4.1 참고, 실험 실행 전 확정 필요.**
 - 타이밍 프로토콜: warmup 25회, 측정 100회, 중앙값. torch.cuda.synchronize 필수.
   베이스라인은 PyTorch eager, 같은 GPU에서 매 실행 재측정 (문헌 수치 사용 금지).
 ## 디렉터리 구조
