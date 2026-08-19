@@ -100,11 +100,13 @@ Provide the corrected complete solution in a single code block.
   엔드포인트는 `seed` 파라미터를 항상 받으므로 예외 없이 채운다.
 - max output tokens: 8192 (PTX가 장문이 되므로 여유 확보; 잘림 발생 시 기록하고
   해당 샘플은 "truncated"로 분류 — 실패의 한 종류로 집계)
-- 모델: **오픈웨이트 2개, 로컬 vLLM 서빙** — Qwen3-Coder-Next-80B-A3B(공식 FP8
-  체크포인트) + gpt-oss-120b (2026-08-19 API 경로 폐기, CLAUDE.md 참고).
+- 모델: **오픈웨이트 2개, 로컬 vLLM 서빙** — gpt-oss-120b + Qwen3-Coder-Next-80B-A3B
+  (공식 FP8 체크포인트; 96GB 카드 1장에 안 들어가면 강등 사다리 적용, CLAUDE.md
+  실험 설계 절 참고) (2026-08-19 API 경로 폐기 → 2026-08-19 PRO 6000 단독
+  완결로 재조정, CLAUDE.md 참고).
   기록 항목(API 시절의 "모델 버전 문자열" 한 줄을 대체): HF 체크포인트
-  리비전(commit hash) + vLLM 버전 + dtype + 위 sampling 파라미터 전부 +
-  타임스탬프 + 전체 프롬프트/응답 (CLAUDE.md 규칙 4).
+  리비전(commit hash) + vLLM 버전 + dtype + **생성에 사용한 GPU 기종** + 위
+  sampling 파라미터 전부 + 타임스탬프 + 전체 프롬프트/응답 (CLAUDE.md 규칙 4).
 
 ## 5. 응답 파싱 규약
 

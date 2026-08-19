@@ -18,9 +18,14 @@ ML for Systems @ NeurIPS 2026 워크숍 논문 실험.
  
 - 과제: KernelBench Level 1에서 4개 언어 모두 표현 가능한 30–40개
 - 모델: **오픈웨이트 2개, 로컬 vLLM 서빙** (2026-08-19 API 경로 폐기, PI 지시).
-  Qwen3-Coder-Next-80B-A3B(공식 FP8 체크포인트) + gpt-oss-120b.
+  gpt-oss-120b + Qwen3-Coder-Next-80B-A3B(공식 FP8 체크포인트, `Qwen/Qwen3-Coder-Next-FP8`).
+  Qwen 쪽 강등 사다리(96GB 카드 1장 기준, 2026-08-19 계획 확정):
+  ① 풀 컨텍스트로 시도 → ② 안 들어가면 max-model-len 축소 → ③ 그래도 안 되면
+  `Qwen/Qwen3-Coder-30B-A3B-Instruct`(표준 MoE, hybrid 아님, bf16 61GB)로 강등.
+  강등이 실제로 일어나면 이 표를 실행 결과로 갱신하고 보고할 것 — 조용히 넘어가지 않는다.
   기록 항목: HF 체크포인트 리비전(commit hash) + vLLM 버전 + dtype + sampling
-  파라미터 — "버전 문자열"이 아니라 이 4가지 전부를 로그에 남긴다.
+  파라미터 + **생성에 사용한 GPU 기종** — "버전 문자열"이 아니라 이 5가지 전부를
+  로그에 남긴다.
 - 프로토콜: 언어당 pass@5 one-shot + 컴파일 에러 메시지만 주는 수리 1턴
 - Ablation: 문서 주입 (언어 명세 ~5k 토큰 in-context), 과제 20개 부분집합
 - 지표: 컴파일률 / 정확률 / fast_1 / speedup geomean / 솔루션당 토큰 수 / 오류 분류 / 수리 후 회복률
@@ -35,14 +40,23 @@ ML for Systems @ NeurIPS 2026 워크숍 논문 실험.
 3. **프롬프트 템플릿 변경은 전 언어에 동시 적용**하고 git commit으로 남긴다.
    특정 언어에만 유리한 힌트 추가 금지.
 4. 모든 실험 실행은 다음을 로그로 남긴다:
-   HF 체크포인트 리비전(commit hash) + vLLM 버전 + dtype, temperature, seed,
-   프롬프트 전문(해시 + 원문), 타임스탬프, torch/CUDA/드라이버 버전(평가 서버 기준),
-   응답 원문 전체.
-5. **생성은 학과 H100×2 서버(별도 기계, `scripts/serve_h100.sh`로 vLLM 서빙),
-   평가는 이 서버(sm_120) 그대로.** 두 기계는 물리적으로 분리 — results/raw/를
-   생성 서버에서 평가 서버로 옮기는 방법(공유 파일시스템 여부, 아니면 rsync/scp)은
-   실행 시점에 확정해서 여기 기록할 것. API 키 개념 자체가 사라졌으므로 관련
-   차단 로직은 `--base-url` 필수 인자로 대체됐다 (`scripts/generate.py` 참고).
+   HF 체크포인트 리비전(commit hash) + vLLM 버전 + dtype + **생성에 사용한 GPU 기종**,
+   temperature, seed, 프롬프트 전문(해시 + 원문), 타임스탬프,
+   torch/CUDA/드라이버 버전(평가 서버 기준), 응답 원문 전체.
+5. **기본 계획: 이 서버(PRO 6000, sm_120) 단독으로 생성+평가 완결.**
+   (2026-08-19 재조정 — H100은 상시 가용이 아니라 기본 경로에서 제외.)
+   `scripts/serve_local.sh`로 이 기계에서 모델 하나씩 vLLM 서빙 → 생성 →
+   종료 → 다음 모델, 두 모델 다 끝난 뒤 평가. **한 모델의 생성은 반드시 한
+   기계에서 완결한다** — 도중에 기계를 바꾸지 않는다 (HF 리비전·vLLM 버전·GPU
+   기종 로그가 배치 단위로 일관돼야 하므로).
+   `scripts/serve_h100.sh`(학과 H100×2, 별도 기계)는 **가속 옵션으로 격하** —
+   H100이 비어 있을 때 모델 하나를 통째로 그쪽에 넘기는 용도로만 남겨둠, 기본
+   경로 아님. API 키 개념 자체가 사라졌으므로 관련 차단 로직은 `--base-url`
+   필수 인자로 대체됐다 (`scripts/generate.py` 참고).
+6. **`scripts/evaluate.py`는 시작 시 GPU 배타성을 강제한다.** `nvidia-smi`로
+   확인해 GPU에 타 프로세스(특히 vLLM 서버)가 남아 있으면 평가를 거부한다 —
+   생성(vLLM)과 평가(타이밍 측정)가 같은 GPU를 동시에 쓰면 타이밍이 오염되기
+   때문. **이 검사에는 우회 플래그를 두지 않는다** (PI 지시, 절대 규칙).
 ## 환경
  
 - GPU: ~~RTX A6000 / sm_86~~ — **실측 결과 문서와 불일치. 2026-08-19 첫 세션에서 정정.**
@@ -98,23 +112,26 @@ CUDA C++·TileLang 두 트랙은 컴파일 자체가 실패하므로, results/ �
 > 다르다. speedup 분포 해석과 논문 Setup의 하드웨어 기술을 모두 이 값 기준으로 쓸 것.
 > 문헌의 A6000 수치와 비교하지 말 것 (원래 규칙: 베이스라인 매 실행 재측정).
 
-### 생성 서버 (H100×2, 별도 기계) — 2026-08-19 아키텍처 변경
+### 생성 아키텍처 — 2026-08-19 재조정: PRO 6000 단독 완결이 기본
 
-API 경로를 폐기하고 로컬 vLLM 서빙으로 전환. `scripts/serve_h100.sh`가
-자체 완결(conda/pip 환경 생성부터 서빙까지) — 사용자가 H100 서버에서 직접 실행.
-sudo 불필요. 실행 전 `nvidia-smi`로 GPU 2장이 비어 있는지 확인하고, 점유
-중이면 중단한다.
+API 경로를 폐기하고 로컬 vLLM 서빙으로 전환 (최초 결정). 처음엔 학과 H100×2를
+생성 전용으로 쓰는 안이었으나, **H100이 상시 가용이 아니라는 게 드러나** 기본
+계획을 이 서버(PRO 6000, sm_120, GPU 1장, 97,887 MiB) 단독 완결로 재조정했다.
+H100은 비어 있을 때 모델 하나를 통째로 넘기는 가속 옵션으로 남긴다.
 
 | 항목 | 값 |
 |------|-----|
-| 모델 A | Qwen3-Coder-Next-80B-A3B, 공식 FP8 체크포인트, GPU 0, 포트 8000 |
-| 모델 B | gpt-oss-120b, GPU 1, 포트 8001 |
-| HF 체크포인트 리비전 | **실행 후 기록 예정** (`scripts/serve_h100.sh` 로그에서 확인, git commit hash) |
-| vLLM 버전 | **실행 후 기록 예정** |
-| dtype | 모델 A: FP8(체크포인트 자체가 FP8) / 모델 B: 배포 기본값(실행 후 확인) |
-| GPU 모델 | **실행 후 확인** (사용자가 "H100×2"라 명시 — nvidia-smi로 재확인) |
+| 기본 경로 | `scripts/serve_local.sh <model>` — 이 서버(PRO 6000)에서 모델 1개씩 순차 서빙 |
+| 가속 옵션 | `scripts/serve_h100.sh` — 학과 H100×2, 비어 있을 때만, 모델 1개를 통째로 |
+| 모델 A | gpt-oss-120b (`openai/gpt-oss-120b`), MXFP4 기본 양자화, 포트 8000 |
+| 모델 B | Qwen3-Coder-Next-80B-A3B (`Qwen/Qwen3-Coder-Next-FP8`), 포트 8001 — 96GB 카드 1장에 빠듯할 수 있음, 강등 사다리는 위 실험 설계 절 참고 |
+| Qwen 실제 사용 체크포인트 | **실행 후 기록** — 강등 발생 시 여기 표시 (기본: Next-FP8, 강등 시: 30B-A3B-Instruct) |
+| HF 체크포인트 리비전 | **실행 후 기록** (`serve_local.sh`가 `logs/vllm/<name>_manifest.json`에 자동 기록) |
+| vLLM 버전 | **실행 후 기록** (manifest) |
+| dtype | 모델 A: MXFP4(배포 기본값) / 모델 B: FP8(체크포인트 자체) 또는 강등 시 bf16 |
+| GPU 기종 | NVIDIA RTX PRO 6000 Blackwell Workstation Edition (이 서버 실측값, 위 "실측 환경" 표) |
 
-두 서버 모두 OpenAI 호환 엔드포인트(`/v1/chat/completions`)로 뜬다.
+모든 서버는 OpenAI 호환 엔드포인트(`/v1/chat/completions`)로 뜬다.
 `scripts/generate.py`는 `--base-url`(필수, 기본값 없음)로 이 엔드포인트를 받는다.
 API 키는 없음 — vLLM은 인증하지 않으므로 더미 문자열을 OpenAI SDK에 채워 넣는다.
 
@@ -159,7 +176,8 @@ kernel-lang-2x2/
 ├── prompts/               # 언어별 프롬프트 템플릿 + 문서 주입용 명세
 ├── scripts/
 │   ├── generate.py        # 로컬 vLLM 호출 생성기 (유일한 생성 경로)
-│   ├── serve_h100.sh      # H100×2 서버에서 실행 — vLLM 서빙 (사용자가 직접 실행)
+│   ├── serve_local.sh     # 기본 경로 — 이 서버(PRO 6000)에서 모델 1개씩 vLLM 서빙
+│   ├── serve_h100.sh      # 가속 옵션 — 학과 H100×2, 비어 있을 때만 (사용자가 직접 실행)
 │   ├── evaluate.py        # 컴파일 + 정확성 (타이밍은 아직 — 파일럿엔 불필요해 보류)
 │   └── analyze.py         # 집계, 표/그림 생성
 ├── harness/
