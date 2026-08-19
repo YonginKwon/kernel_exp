@@ -164,9 +164,17 @@ def _get_runner() -> "CuModuleRunner":
 
 
 def _detect_arch() -> str:
+    # [sync-needed] the family-specific "a" suffix (sm_90a, sm_120a, ...) is
+    # only valid for architectures that define family-specific PTX features --
+    # it hard-errors on ptxas for others (e.g. Ampere sm_80: "Value 'sm_80a'
+    # is not defined for option 'gpu-name'"). Detected on the kernel-lang-2x2
+    # A100 probe; only sm_120a was ever exercised on the primary sm_120 box so
+    # this never surfaced there.
     import torch
     major, minor = torch.cuda.get_device_capability(0)
-    return f"sm_{major}{minor}a"
+    cc = major * 10 + minor
+    suffix = "a" if cc in (90, 100, 101, 120) else ""
+    return f"sm_{major}{minor}{suffix}"
 
 
 def ptx_load(ptx_source: str, arch: str | None = None) -> int:

@@ -10,14 +10,24 @@ Fixture PTX (vecadd.ptx) was produced once via `nvcc -arch=sm_120a -ptx` from a
 throwaway .cu file, purely to get a real, driver-valid PTX text targeting this
 GPU's compute capability -- this validates the *harness*, not an LLM's PTX
 authoring ability. Not experimental data.
+
+Fixture path is parametrized (--fixture) so this same smoke test runs on other
+GPU architectures (e.g. the kernel-lang-2x2 A100 probe, sm_80) without editing
+this file -- default stays sm_120a to keep the primary machine's behavior
+unchanged. [sync-needed] mirror this parametrization back to the main repo.
 """
+import argparse
 import sys
 import torch
 
 sys.path.insert(0, "harness/ptx")
 from ptx_harness import ptx_load, ptx_launch, PTXCompileError
 
-PTX_SRC = open("scripts/fixtures/vecadd.ptx").read()
+parser = argparse.ArgumentParser()
+parser.add_argument("--fixture", default="scripts/fixtures/vecadd.ptx")
+ARGS, _ = parser.parse_known_args()
+
+PTX_SRC = open(ARGS.fixture).read()
 
 
 def main():
