@@ -143,9 +143,30 @@ else
 fi
 PY=python
 
-log "installing/upgrading vllm (>=0.15.0) + huggingface_hub"
+# [sync-needed] kernel-lang-2x2 A100 probe: the primary sm_120 box's driver
+# (595.84) supports a much newer CUDA runtime than this A100 box's (535.309.01,
+# minor-version-compatible only up through CUDA 12.x). "vllm>=0.15.0" here
+# resolves to the newest vllm (0.27.1 as of 2026-08-20), which pulls
+# torch==2.13.0 (needs CUDA 13.x) and hard-fails with "The NVIDIA driver on
+# your system is too old" on this box. Pinned to vllm==0.10.1 instead -- the
+# earliest release whose model registry includes GptOssForCausalLM (added
+# between 0.10.0 and 0.10.1; confirmed absent in 0.10.0, present in 0.10.1)
+# AND Qwen3MoeForCausalLM (present since >=0.9.2) -- which resolves
+# torch==2.7.1+cu126, natively within this driver's CUDA-12.x compatibility
+# range (no forward-compat shim needed; verified directly, 2026-08-20).
+# Parametrized via env var (default unchanged) rather than hand-editing the
+# hardcoded spec, per project rule 3.
+VLLM_VERSION_SPEC="${KERNEL2X2_VLLM_VERSION_SPEC:-vllm>=0.15.0}"
+log "installing/upgrading vllm ($VLLM_VERSION_SPEC) + huggingface_hub"
 pip install -q --upgrade pip
-pip install -q --upgrade "vllm>=0.15.0" huggingface_hub
+pip install -q --upgrade "$VLLM_VERSION_SPEC" huggingface_hub
+# outlines/outlines_core version drift: a stale standalone `outlines` package
+# left over from environment iteration can pin an outlines_core incompatible
+# with what vllm 0.10.1 itself requires (==0.2.10). vllm 0.10.1 does not
+# depend on the `outlines` package directly (only outlines_core) -- drop it
+# if present and pin outlines_core to vllm's actual requirement.
+pip uninstall -y -q outlines >/dev/null 2>&1 || true
+pip install -q "outlines_core==0.2.10" 2>&1 | grep -v "already satisfied" || true
 
 VLLM_VERSION="$($PY -c 'import vllm; print(vllm.__version__)')"
 log "vllm version: $VLLM_VERSION"
