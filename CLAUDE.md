@@ -160,7 +160,7 @@ kernel-lang-2x2/
 ├── scripts/
 │   ├── generate.py        # 로컬 vLLM 호출 생성기 (유일한 생성 경로)
 │   ├── serve_h100.sh      # H100×2 서버에서 실행 — vLLM 서빙 (사용자가 직접 실행)
-│   ├── evaluate.py        # 컴파일 + 정확성 + 타이밍
+│   ├── evaluate.py        # 컴파일 + 정확성 (타이밍은 아직 — 파일럿엔 불필요해 보류)
 │   └── analyze.py         # 집계, 표/그림 생성
 ├── harness/
 │   ├── cuda/              # KernelBench 하니스 재사용

@@ -2,6 +2,7 @@
 # (CLAUDE.md: results/ 는 읽기 전용 취급, git-lfs 또는 .gitignore)
 results/**/generations/
 results/**/raw/
+results/**/eval/
 results/**/*.log
 
 # Environment
@@ -18,6 +19,10 @@ third_party/
 *.cubin
 *.fatbin
 .cache/
+
+# vLLM serving artifacts (H100 machine only -- pidfiles, logs, per-run manifests)
+logs/
+.venv-vllm/
 
 # Local Claude Code session settings (machine/user-specific, not project config)
 .claude/

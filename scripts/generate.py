@@ -8,34 +8,46 @@ Prompt construction goes entirely through prompts/spec_loader.py, which
 parses prompts/PROMPT_SPEC.md -- PROMPT_SPEC.md is the single source of
 truth for prompt text; nothing here hardcodes template strings.
 
-API calls go through litellm (already a KernelBench dependency, see
-requirements.txt), so one code path handles both providers: pass a
-litellm-style model string (e.g. "gpt-5.1" or "claude-opus-5-20260101") via
---model. Reads OPENAI_API_KEY / ANTHROPIC_API_KEY from the environment only
-(CLAUDE.md rule: never in code or logs).
+2026-08-19: API-provider path (litellm/OpenAI-Anthropic) dropped per PI
+directive. Generation now targets a locally-served, OpenAI-compatible vLLM
+endpoint (see scripts/serve_h100.sh, run on the department's H100x2 server)
+via the `openai` SDK pointed at that endpoint's --base-url. There is no API
+key in any real sense -- vLLM does not authenticate -- so this script never
+reads OPENAI_API_KEY/ANTHROPIC_API_KEY and never checks for them; the only
+required connection info is --base-url (no default, so a typo fails loudly
+instead of silently hitting the wrong server) and --model (the exact name
+vLLM serves the checkpoint under -- normally the HF repo id, e.g.
+"Qwen/Qwen3-Coder-Next-FP8" or "openai/gpt-oss-120b").
 
-Every call is logged in full (CLAUDE.md rule 4): model string, temperature,
-seed, prompt (hash + verbatim text), timestamp, torch/CUDA/driver version,
-and the raw response -- to results/raw/, which is read-only data once
-written (CLAUDE.md rule 1: never hand-edit anything under results/).
+Every call is logged in full (CLAUDE.md rule 4): base_url + model, HF
+checkpoint revision + vLLM version + dtype (read from
+logs/vllm/<name>_manifest.json, written by serve_h100.sh -- pass its path
+via --manifest so this data isn't hand-typed), temperature, seed, prompt
+(hash + verbatim text), timestamp, torch/CUDA/driver version (this
+-- evaluation -- machine's), and the raw response -- to results/raw/, which
+is read-only data once written (CLAUDE.md rule 1: never hand-edit anything
+under results/).
 
 Usage:
-    # Always estimate cost first (no API calls, no network):
+    # Always dry-run first (builds every prompt, no network calls):
     python scripts/generate.py --language cuda --condition 0shot \\
-        --provider-model gpt-5.1 --dry-run
+        --base-url http://h100-host:8000/v1 --model Qwen/Qwen3-Coder-Next-FP8 \\
+        --manifest logs/vllm/qwen_manifest.json --dry-run
 
     # Then run for real:
     python scripts/generate.py --language cuda --condition 0shot \\
-        --provider-model gpt-5.1 --confirm-cost
+        --base-url http://h100-host:8000/v1 --model Qwen/Qwen3-Coder-Next-FP8 \\
+        --manifest logs/vllm/qwen_manifest.json --confirm-run
 """
 import argparse
 import hashlib
 import json
-import os
 import re
 import subprocess
 import sys
 import time
+import urllib.request
+import urllib.error
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).parent.parent
@@ -45,18 +57,6 @@ from spec_loader import get_spec, load_language_spec, LANGUAGE_DISPLAY  # noqa: 
 TASKS_PATH = REPO_ROOT / "tasks" / "level1_subset.json"
 KERNELBENCH_LEVEL1 = REPO_ROOT / "third_party" / "KernelBench" / "KernelBench" / "level1"
 RESULTS_RAW = REPO_ROOT / "results" / "raw"
-
-# Rough $/1M-token estimates for cost projection ONLY (--dry-run). Not used
-# for anything billed. Update if the pinned models (still undecided -- see
-# CLAUDE.md "모델: ... 버전 문자열 고정") change; unknown models fall back to
-# a conservative placeholder and print a warning rather than silently
-# under-estimating.
-_PRICE_PER_1M_FALLBACK = {"input": 5.0, "output": 15.0}
-_KNOWN_PRICES_PER_1M = {
-    # populate once the PI pins exact model version strings (CLAUDE.md rule:
-    # "모델 버전 문자열, ... 로그로 남긴다"); left empty on purpose so the
-    # fallback's conservative estimate + warning is what shows up until then.
-}
 
 
 def load_tasks(family_filter=None):
@@ -85,7 +85,10 @@ def extract_first_code_block(text: str) -> str | None:
 
 
 def env_fingerprint() -> dict:
-    """torch/CUDA/driver versions for the log (CLAUDE.md rule 4)."""
+    """torch/CUDA/driver versions for the log (CLAUDE.md rule 4) -- this is
+    the EVALUATION machine's environment (where this script runs), not the
+    H100 generation server's. The generation server's facts (HF revision,
+    vLLM version, dtype) come from --manifest instead, see load_manifest()."""
     info = {}
     try:
         import torch
@@ -105,6 +108,22 @@ def env_fingerprint() -> dict:
     except Exception as e:
         info["driver_version_error"] = str(e)
     return info
+
+
+def load_manifest(path: str | None) -> dict:
+    """serve_h100.sh writes logs/vllm/<name>_manifest.json with the HF
+    revision / vLLM version / dtype facts CLAUDE.md rule 4 requires. Passing
+    it is optional but strongly recommended -- without it those fields are
+    just recorded as null and have to be filled in by hand later."""
+    if path is None:
+        return {}
+    p = Path(path)
+    if not p.exists():
+        print(f"[warn] --manifest {path} does not exist -- HF revision/vLLM version/"
+              f"dtype will be logged as null. Copy it from the H100 server first.",
+              file=sys.stderr)
+        return {}
+    return json.loads(p.read_text())
 
 
 def estimate_tokens(text: str) -> int:
@@ -127,39 +146,33 @@ def build_all_prompts(language: str, tasks: list, condition: str) -> list:
     return prompts
 
 
-def dry_run_report(language: str, tasks: list, condition: str, num_samples: int, model: str):
+def dry_run_report(language: str, tasks: list, condition: str, num_samples: int,
+                    model: str, base_url: str) -> list:
     prompts = build_all_prompts(language, tasks, condition)
-    total_input_tokens = 0
-    for p in prompts:
-        total_input_tokens += estimate_tokens(p["prompt"])
-    spec = get_spec()
-    max_out = spec.generation_params.get("max_output_tokens", 8192)
+    total_input_tokens = sum(estimate_tokens(p["prompt"]) for p in prompts)
     total_calls = len(tasks) * num_samples
-    total_output_tokens_upper_bound = total_calls * max_out  # worst case, most won't hit the cap
 
-    price = _KNOWN_PRICES_PER_1M.get(model, _PRICE_PER_1M_FALLBACK)
-    if model not in _KNOWN_PRICES_PER_1M:
-        print(f"[warn] no pinned price for model={model!r} -- using a conservative "
-              f"fallback (${_PRICE_PER_1M_FALLBACK['input']}/{_PRICE_PER_1M_FALLBACK['output']} "
-              f"per 1M in/out tokens). Real cost may differ; update _KNOWN_PRICES_PER_1M "
-              f"once the PI pins model prices.")
-
-    input_cost = (total_input_tokens * num_samples / 1_000_000) * price["input"]
-    output_cost_upper = (total_output_tokens_upper_bound / 1_000_000) * price["output"]
-
-    print(f"[dry-run] language={language} condition={condition} model={model}")
+    print(f"[dry-run] language={language} condition={condition} model={model} base_url={base_url}")
     print(f"[dry-run] tasks={len(tasks)} samples/task={num_samples} total_calls={total_calls}")
-    print(f"[dry-run] avg prompt tokens/task={total_input_tokens // max(len(tasks),1)} "
-          f"(cl100k_base estimate, not exact for every provider's tokenizer)")
-    print(f"[dry-run] estimated input cost: ${input_cost:.2f}")
-    print(f"[dry-run] estimated output cost (UPPER BOUND, assumes every "
-          f"response hits max_output_tokens={max_out}): ${output_cost_upper:.2f}")
-    print(f"[dry-run] estimated total cost: ${input_cost:.2f} - ${input_cost + output_cost_upper:.2f}")
+    print(f"[dry-run] avg prompt tokens/task={total_input_tokens // max(len(tasks), 1)} "
+          f"(cl100k_base estimate, not exact for every tokenizer)")
+    print("[dry-run] no cost estimate (local inference, no per-token billing) -- "
+          "the thing to check before a big run is wall-clock: time one sample by hand "
+          "against the endpoint first if this is a new model/box.")
     return prompts
 
 
-def call_model(model: str, prompt: str, temperature: float, max_tokens: int, seed: int | None):
-    import litellm
+def check_endpoint_reachable(base_url: str) -> bool:
+    url = base_url.rstrip("/") + "/models"
+    try:
+        with urllib.request.urlopen(url, timeout=10) as resp:
+            return resp.status == 200
+    except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, ConnectionError) as e:
+        print(f"[refuse] endpoint not reachable: GET {url} -> {type(e).__name__}: {e}", file=sys.stderr)
+        return False
+
+
+def call_model(client, model: str, prompt: str, temperature: float, max_tokens: int, seed: int | None):
     kwargs = dict(
         model=model,
         messages=[{"role": "user", "content": prompt}],
@@ -168,13 +181,15 @@ def call_model(model: str, prompt: str, temperature: float, max_tokens: int, see
     )
     if seed is not None:
         kwargs["seed"] = seed
-    response = litellm.completion(**kwargs)
-    return response
+    return client.chat.completions.create(**kwargs)
 
 
-def run_generation(language: str, tasks: list, condition: str, model: str,
-                    num_samples: int, temperature: float, max_tokens: int,
+def run_generation(language: str, tasks: list, condition: str, model: str, base_url: str,
+                    manifest: dict, num_samples: int, temperature: float, max_tokens: int,
                     seed_base: int | None, out_dir: Path):
+    from openai import OpenAI
+    client = OpenAI(base_url=base_url, api_key="not-needed-for-vllm")
+
     spec = get_spec()
     doc_text = load_language_spec(language) if condition == "docinject" else None
     env_info = env_fingerprint()
@@ -195,6 +210,10 @@ def run_generation(language: str, tasks: list, condition: str, model: str,
                 "condition": condition,
                 "sample_index": i,
                 "model": model,
+                "base_url": base_url,
+                "hf_revision": manifest.get("hf_revision"),
+                "vllm_version": manifest.get("vllm_version"),
+                "tensor_parallel_size": manifest.get("tensor_parallel_size"),
                 "temperature": temperature,
                 "max_tokens": max_tokens,
                 "seed": seed,
@@ -205,18 +224,18 @@ def run_generation(language: str, tasks: list, condition: str, model: str,
             }
 
             try:
-                response = call_model(model, prompt, temperature, max_tokens, seed)
+                response = call_model(client, model, prompt, temperature, max_tokens, seed)
                 raw_text = response.choices[0].message.content
                 record["response_raw"] = raw_text
                 record["response_finish_reason"] = response.choices[0].finish_reason
-                record["usage"] = dict(response.usage) if response.usage else None
-                parsed = extract_first_code_block(raw_text)
+                record["usage"] = response.usage.model_dump() if response.usage else None
+                parsed = extract_first_code_block(raw_text or "")
                 record["parsed_code"] = parsed
                 record["status"] = "generated" if parsed is not None else "format_failure"
                 if record["response_finish_reason"] == "length":
                     record["status"] = "truncated"
             except Exception as e:
-                record["status"] = "api_error"
+                record["status"] = "request_error"
                 record["error"] = f"{type(e).__name__}: {e}"
 
             task_dir = out_dir / language / condition / task["name"] / model.replace("/", "_")
@@ -233,11 +252,22 @@ def main():
     ap.add_argument("--family", action="append", default=None,
                      help="restrict to one or more tasks/level1_subset.json families "
                           "(repeatable). Default: all families.")
-    ap.add_argument("--provider-model", dest="model", required=True,
-                     help="litellm-style model string, e.g. 'gpt-5.1' or "
-                          "'claude-opus-5-20260101'. No default -- CLAUDE.md requires "
-                          "the exact pinned version string be explicit and logged, "
-                          "not guessed by this script.")
+    ap.add_argument("--task", action="append", default=None,
+                     help="restrict to specific task name(s) (repeatable), e.g. for a "
+                          "pilot run. Combines with --family if both given.")
+    ap.add_argument("--base-url", required=True,
+                     help="OpenAI-compatible endpoint, e.g. http://h100-host:8000/v1 "
+                          "(scripts/serve_h100.sh's Qwen port) or :8001 (gpt-oss). "
+                          "No default -- a wrong/missing URL must fail loudly, not "
+                          "silently hit some other server.")
+    ap.add_argument("--model", required=True,
+                     help="the model name vLLM serves the checkpoint under (normally "
+                          "the HF repo id, e.g. 'Qwen/Qwen3-Coder-Next-FP8' or "
+                          "'openai/gpt-oss-120b').")
+    ap.add_argument("--manifest", default=None,
+                     help="path to serve_h100.sh's <name>_manifest.json, for HF "
+                          "revision / vLLM version / tensor_parallel_size in the log. "
+                          "Optional but recommended.")
     ap.add_argument("--samples", type=int, default=None,
                      help="default: PROMPT_SPEC.md §4's value (5)")
     ap.add_argument("--temperature", type=float, default=None,
@@ -245,14 +275,16 @@ def main():
     ap.add_argument("--max-tokens", type=int, default=None,
                      help="default: PROMPT_SPEC.md §4's value (8192)")
     ap.add_argument("--seed", type=int, default=None,
-                     help="base seed; sample i uses seed+i if given. Only honored by "
-                          "providers/models that support it.")
+                     help="base seed; sample i uses seed+i. PROMPT_SPEC.md §4 requires "
+                          "this be set for every real (non-dry-run) call.")
     ap.add_argument("--out-dir", default=str(RESULTS_RAW))
     ap.add_argument("--dry-run", action="store_true",
-                     help="build every prompt and estimate cost; NO API calls, NO network.")
-    ap.add_argument("--confirm-cost", action="store_true",
-                     help="required (in addition to omitting --dry-run) to actually spend "
-                          "money -- CLAUDE.md: '실행 전 예상 API 비용을 추산해 보고할 것'.")
+                     help="build every prompt and report counts/token estimate; NO "
+                          "network calls.")
+    ap.add_argument("--confirm-run", action="store_true",
+                     help="required (in addition to omitting --dry-run) to actually "
+                          "call the endpoint -- guards against a fat-fingered command "
+                          "kicking off hundreds of generations against a shared server.")
     args = ap.parse_args()
 
     if args.condition == "docinject":
@@ -267,6 +299,13 @@ def main():
     if args.condition == "docinject":
         approved_names = set(json.loads(TASKS_PATH.read_text())["doc_ablation_subset_of_20"]["tasks"])
         tasks = [t for t in tasks if t["name"] in approved_names]
+    if args.task:
+        wanted = set(args.task)
+        tasks = [t for t in tasks if t["name"] in wanted]
+        missing = wanted - {t["name"] for t in tasks}
+        if missing:
+            print(f"[refuse] unknown --task name(s) not in tasks/level1_subset.json: {missing}", file=sys.stderr)
+            return 1
 
     spec = get_spec()
     num_samples = args.samples or spec.generation_params.get("num_samples", 5)
@@ -274,25 +313,27 @@ def main():
     max_tokens = args.max_tokens or spec.generation_params.get("max_output_tokens", 8192)
 
     if args.dry_run:
-        dry_run_report(args.language, tasks, args.condition, num_samples, args.model)
+        dry_run_report(args.language, tasks, args.condition, num_samples, args.model, args.base_url)
         return 0
 
-    if not args.confirm_cost:
-        print("[refuse] this would make real, billed API calls. Run with --dry-run first "
-              "to see the cost estimate, then re-run with --confirm-cost to proceed.",
-              file=sys.stderr)
+    if not args.confirm_run:
+        print("[refuse] this would make real requests against the endpoint. Run with "
+              "--dry-run first, then re-run with --confirm-run to proceed.", file=sys.stderr)
         return 1
 
-    if not os.environ.get("OPENAI_API_KEY") and not os.environ.get("ANTHROPIC_API_KEY"):
-        print("[refuse] neither OPENAI_API_KEY nor ANTHROPIC_API_KEY is set in the "
-              "environment. CLAUDE.md: API keys only via env vars, never in code/logs.",
-              file=sys.stderr)
+    if args.seed is None:
+        print("[refuse] PROMPT_SPEC.md §4 requires a fixed seed per call for a real "
+              "(non-dry-run) generation run. Pass --seed.", file=sys.stderr)
         return 1
 
-    dry_run_report(args.language, tasks, args.condition, num_samples, args.model)
-    print(f"\n[confirmed] proceeding with {len(tasks) * num_samples} real API calls...")
-    run_generation(args.language, tasks, args.condition, args.model, num_samples,
-                    temperature, max_tokens, args.seed, Path(args.out_dir))
+    if not check_endpoint_reachable(args.base_url):
+        return 1
+
+    manifest = load_manifest(args.manifest)
+    dry_run_report(args.language, tasks, args.condition, num_samples, args.model, args.base_url)
+    print(f"\n[confirmed] proceeding with {len(tasks) * num_samples} real requests to {args.base_url} ...")
+    run_generation(args.language, tasks, args.condition, args.model, args.base_url, manifest,
+                    num_samples, temperature, max_tokens, args.seed, Path(args.out_dir))
     return 0
 
 
