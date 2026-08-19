@@ -191,7 +191,7 @@ resolve_hf_revision() {
     # HF cache layout: $HF_HOME/hub/models--ORG--NAME/snapshots/<sha>/ -- the
     # snapshot dirname IS the resolved commit hash after download.
     local repo="$1"
-    local cache_name="models--$(echo "$repo" | tr '/' '-')"
+    local cache_name="models--$(echo "$repo" | sed 's|/|--|')"
     local hub_dir="${HF_HOME:-$HOME/.cache/huggingface}/hub/$cache_name/snapshots"
     if [ -d "$hub_dir" ]; then
         ls "$hub_dir" | head -1

@@ -123,17 +123,62 @@ H100은 비어 있을 때 모델 하나를 통째로 넘기는 가속 옵션으�
 |------|-----|
 | 기본 경로 | `scripts/serve_local.sh <model>` — 이 서버(PRO 6000)에서 모델 1개씩 순차 서빙 |
 | 가속 옵션 | `scripts/serve_h100.sh` — 학과 H100×2, 비어 있을 때만, 모델 1개를 통째로 |
-| 모델 A | gpt-oss-120b (`openai/gpt-oss-120b`), MXFP4 기본 양자화, 포트 8000 |
-| 모델 B | Qwen3-Coder-Next-80B-A3B (`Qwen/Qwen3-Coder-Next-FP8`), 포트 8001 — 96GB 카드 1장에 빠듯할 수 있음, 강등 사다리는 위 실험 설계 절 참고 |
-| Qwen 실제 사용 체크포인트 | **실행 후 기록** — 강등 발생 시 여기 표시 (기본: Next-FP8, 강등 시: 30B-A3B-Instruct) |
-| HF 체크포인트 리비전 | **실행 후 기록** (`serve_local.sh`가 `logs/vllm/<name>_manifest.json`에 자동 기록) |
-| vLLM 버전 | **실행 후 기록** (manifest) |
-| dtype | 모델 A: MXFP4(배포 기본값) / 모델 B: FP8(체크포인트 자체) 또는 강등 시 bf16 |
+| 모델 A | gpt-oss-120b (`openai/gpt-oss-120b`), MXFP4 기본 양자화, 포트 8000 — **동작 확인 (2026-08-19)** |
+| 모델 B | Qwen3-Coder-Next-80B-A3B (`Qwen/Qwen3-Coder-Next-FP8`), 포트 8001 — **이 GPU에서 동작 안 함, 아키텍처 버그 (아래 참고)** |
+| Qwen 실제 사용 체크포인트 | `Qwen/Qwen3-Coder-30B-A3B-Instruct`로 강등 (아래 "Qwen 실패" 절 참고) — **메모리 부족이 아니라 커널 버그로 인한 강등**, 원래 사다리(①풀컨텍스트→②컨텍스트축소→③모델강등)의 ①→③ 직행 |
+| HF 체크포인트 리비전 (gpt-oss-120b) | `b5c939de8f754692c1647ca79fbf85e8c1e70f8a` |
+| HF 체크포인트 리비전 (Qwen, 강등 후) | **실행 후 기록** (`logs/vllm/qwen_manifest.json`) |
+| vLLM 버전 | 0.27.1 (`pip install vllm>=0.15.0`이 실제로 받아온 버전) |
+| dtype | 모델 A: MXFP4(배포 기본값) / 모델 B(강등 후 30B-A3B): bf16(양자화 없음) |
 | GPU 기종 | NVIDIA RTX PRO 6000 Blackwell Workstation Edition (이 서버 실측값, 위 "실측 환경" 표) |
 
 모든 서버는 OpenAI 호환 엔드포인트(`/v1/chat/completions`)로 뜬다.
 `scripts/generate.py`는 `--base-url`(필수, 기본값 없음)로 이 엔드포인트를 받는다.
 API 키는 없음 — vLLM은 인증하지 않으므로 더미 문자열을 OpenAI SDK에 채워 넣는다.
+
+#### vLLM 서빙 시 필요했던 3가지 우회 (재현 시 참고, `scripts/serve_local.sh`에 반영됨)
+
+`pip install vllm`이 이 서버(sm_120a)에서 그냥은 안 뜬다. `scripts/serve_local.sh gptoss`를 실기기에서
+돌리며 하나씩 찾음:
+
+1. **flashinfer가 "FlashInfer requires GPUs with sm75 or higher"라고 오진단.**
+   실제 원인은 다름: flashinfer가 sm_120(Blackwell) 커널을 JIT 컴파일하려면
+   `nvcc --version`이 CUDA ≥ 12.9를 보고해야 하는데, `which nvcc`가 시스템
+   nvcc(12.0)를 찾아서 "12.0 < 12.9"로 판정하고 조용히 실패 → 빈 아키텍처
+   목록 → 저 오해의 소지 있는 메시지. `pip install vllm`이 끌어온 torch가
+   자체 번들한 `site-packages/nvidia/cu13/`(nvcc 13.3)를 `CUDA_HOME`/`PATH`로
+   지정해 우회.
+2. **그 nvcc(13.3)와 짝이 안 맞는 `nvidia-cuda-runtime`(13.0) 헤더.**
+   `cu13/` 트리 안의 nvcc와 런타임 헤더가 pip 리졸버에 의해 서로 다른
+   버전으로 깔림 → flashinfer가 "CUDA compiler and CUDA toolkit headers are
+   incompatible" 컴파일 에러. `pip install nvidia-cuda-runtime==13.3.*`로
+   nvcc와 major.minor를 강제로 맞춤.
+3. **CUDA 그래프 캡처가 이 GPU/vLLM/torch 조합에서 세그폴트.**
+   `cuCtxSynchronize` 중 크래시(OOM 아님, 순수 그래프 캡처 버그로 보임).
+   `--enforce-eager`로 그래프 캡처 자체를 건너뛰어 우회 — 처리량은 다소
+   손해지만 안정적으로 동작. gpt-oss/Qwen 두 모델 실행 모두에 적용.
+
+추가로 gpt-oss-120b는 기본 설정(긴 컨텍스트 + `--gpu-memory-utilization 0.9`)에서
+워밍업 중 OOM→세그폴트가 나서 `--max-model-len 32768 --gpu-memory-utilization 0.85`로
+낮춤 (66GiB 가중치 로드 후 남는 여유가 너무 적었음). 이 프로젝트 실제 프로토콜
+(프롬프트 + 최대 8192 출력 토큰)에는 32768이면 충분한 여유.
+
+#### Qwen3-Coder-Next-FP8 실패 상세 (2026-08-19)
+
+`VLLM_USE_DEEP_GEMM=0 VLLM_MOE_USE_DEEP_GEMM=0`로 DeepGEMM을 꺼서 첫 번째 크래시
+("Assertion error ... Unknown SF transformation", DeepGEMM의 FP8 스케일-팩터
+레이아웃이 이 체크포인트 양자화 포맷을 인식 못함)는 넘겼지만, 모델 로드
+직후(74.9GiB 가중치 로드 성공) `--enforce-eager`를 켠 채로도 `cuCtxSynchronize`에서
+또 세그폴트 — 이번엔 hybrid Gated-Attention/Gated-DeltaNet 아키텍처 전용
+커널(mamba 스타일 선형 어텐션) 경로로 보임. **이건 메모리 부족이 아니라 커널
+호환성 버그**이므로 `serve_local.sh`의 사다리 ②(max-model-len 축소)는 이 문제를
+해결하지 못한다고 판단해 ③(모델 강등, 표준 MoE 아키텍처로 구조 자체를 바꿈)으로
+직행했다. `serve_local.sh`의 `looks_like_oom()` 판정은 여기선 "non-OOM"으로
+정확히 걸러냈다(그래서 자동으로 ②를 시도하지 않고 멈췄다) — 다만 ①→③ 직행은
+스크립트가 자동으로 하지 않고 이 세션에서 수동 판단으로 진행했다. **PI 확인 필요**:
+Qwen3-Coder-Next-FP8을 이 GPU에서 다시 시도할 가치가 있는지(vLLM/flashinfer
+업데이트 대기, 다른 attention backend 강제 등) 아니면 30B-A3B 강등을 이번
+실험의 "Qwen" 모델로 확정할지.
 
 ### PTX go/no-go 판정: **GO** (2026-08-19)
 

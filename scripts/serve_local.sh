@@ -144,11 +144,45 @@ VLLM_VERSION="$($PY -c 'import vllm; print(vllm.__version__)')"
 log "vllm version: $VLLM_VERSION"
 
 # ----------------------------------------------------------------------------
+# 2.1 CUDA toolchain fix, discovered running this exact script (2026-08-19):
+# vLLM's flashinfer dependency JIT-compiles a sampling kernel and, on this
+# GPU (sm_120a), needs an nvcc reporting CUDA >= 12.9 (flashinfer's own
+# device-capability check requires it for SM 12.x) -- otherwise it silently
+# falls back to a misleading "FlashInfer requires GPUs with sm75 or higher"
+# error. `pip install vllm` here pulls torch's own bundled CUDA (a "cu13"
+# nvidia/cu13/ tree under site-packages) which HAS an nvcc >= 12.9 -- but its
+# sibling `nvidia-cuda-runtime` package version can land on a DIFFERENT
+# major.minor than the nvcc package resolved (both are independently
+# versioned pip packages), and flashinfer hard-asserts they match
+# (CUDART_VERSION vs __CUDACC_VER__). Force them to match explicitly rather
+# than trust whatever pip's resolver happened to pick.
+CU_DIR="$($PY -c 'import nvidia, os; print(os.path.join(list(nvidia.__path__)[0], "cu13"))')"
+if [ -d "$CU_DIR" ]; then
+    NVCC_VER="$("$CU_DIR/bin/nvcc" --version | grep -oP 'release \K[0-9]+\.[0-9]+')"
+    log "pinning nvidia-cuda-runtime to match bundled nvcc (release $NVCC_VER)"
+    if ! pip install -q "nvidia-cuda-runtime==${NVCC_VER}.*"; then
+        log "WARNING: could not pin an exact nvidia-cuda-runtime==${NVCC_VER}.* match -- if"
+        log "the qwen/gptoss launch below fails with a flashinfer 'CUDA compiler and CUDA"
+        log "toolkit headers are incompatible' error, this is why; pin it by hand."
+    fi
+    rm -rf "${HOME}/.cache/flashinfer"  # clear any cache built against the old mismatch
+    export CUDA_HOME="$CU_DIR"
+    export PATH="$CU_DIR/bin:$PATH"
+    export CPATH="$CU_DIR/include"
+    log "CUDA_HOME=$CUDA_HOME (nvcc $("$CU_DIR/bin/nvcc" --version | tail -1))"
+else
+    log "WARNING: no bundled nvidia/cu13 tree found under this venv's torch install --"
+    log "flashinfer's sm_120a JIT compile may fail. See CLAUDE.md's toolchain notes."
+fi
+
+# ----------------------------------------------------------------------------
 # 3. Helpers.
 # ----------------------------------------------------------------------------
 resolve_hf_revision() {
     local repo="$1"
-    local cache_name="models--$(echo "$repo" | tr '/' '-')"
+    # HF cache dirnames use "--" between org and name (e.g. models--openai--gpt-oss-120b),
+    # not a single "-" -- confirmed against a real download, 2026-08-19.
+    local cache_name="models--$(echo "$repo" | sed 's|/|--|')"
     local hub_dir="${HF_HOME:-$HOME/.cache/huggingface}/hub/$cache_name/snapshots"
     if [ -d "$hub_dir" ]; then
         ls "$hub_dir" | head -1
@@ -187,7 +221,12 @@ try_launch() {
 }
 
 looks_like_oom() {
-    grep -qiE "out of memory|CUDA error: out of memory|torch\.(cuda\.)?OutOfMemoryError|CUDA_ERROR_OUT_OF_MEMORY" "$1" 2>/dev/null
+    # \bOOM\b matters: vLLM/torch's CUDACachingAllocator logs the abbreviated
+    # "memory allocation failed with OOM" (no literal "out of memory"
+    # substring) when a real OOM happens during warmup/profiling, which the
+    # other alternatives alone would miss (confirmed against a real gpt-oss-
+    # 120b OOM->SIGSEGV during warmup, 2026-08-19).
+    grep -qiE "out of memory|CUDA error: out of memory|torch\.(cuda\.)?OutOfMemoryError|CUDA_ERROR_OUT_OF_MEMORY|\bOOM\b" "$1" 2>/dev/null
 }
 
 write_manifest() {
@@ -216,17 +255,34 @@ JSON
 # 4. Launch.
 # ----------------------------------------------------------------------------
 if [ "$TARGET" = "gptoss" ]; then
-    if try_launch "$GPTOSS_REPO" "$GPTOSS_PORT" "$LOG_DIR/gptoss.log"; then
+    # --max-model-len 32768 + --gpu-memory-utilization 0.85: gpt-oss-120b's
+    # default (much longer) context, combined with vLLM's default 0.9 memory
+    # utilization, over-commits this GPU during the profiling/warmup pass
+    # (66GiB weights leaves too little slack) and crashes with a CUDA OOM ->
+    # SIGSEGV during warmup. --enforce-eager: even with the above fix, CUDA
+    # graph capture itself segfaults on this GPU/vLLM/torch combination
+    # (cuCtxSynchronize crash during "Profiling CUDA graph memory") --
+    # eager mode skips graph capture entirely, trading some throughput for
+    # actual stability. All three found running this exact script,
+    # 2026-08-19. 32768 is generous headroom over this project's actual
+    # protocol (prompt + 8192 max output tokens, PROMPT_SPEC.md #4).
+    if try_launch "$GPTOSS_REPO" "$GPTOSS_PORT" "$LOG_DIR/gptoss.log" \
+        --max-model-len 32768 --gpu-memory-utilization 0.85 --enforce-eager; then
         echo "$ATTEMPT_PID" > "$(pidfile gptoss)"
-        write_manifest gptoss "$GPTOSS_REPO" "$GPTOSS_PORT" "$(resolve_hf_revision "$GPTOSS_REPO")" false "" ""
+        write_manifest gptoss "$GPTOSS_REPO" "$GPTOSS_PORT" "$(resolve_hf_revision "$GPTOSS_REPO")" false "" "32768"
     else
         log "FATAL: gpt-oss-120b failed to come up. See $LOG_DIR/gptoss.log"
         exit 1
     fi
 
 elif [ "$TARGET" = "qwen" ]; then
+    # --enforce-eager on every attempt: CUDA graph capture segfaults on this
+    # GPU/vLLM/torch combination regardless of model (confirmed with
+    # gpt-oss-120b, 2026-08-19) -- skip it outright rather than let it
+    # produce a non-OOM crash the downgrade ladder below would misdiagnose
+    # as FATAL.
     log "=== attempt 1/3: full context, ${QWEN_REPO} ==="
-    if try_launch "$QWEN_REPO" "$QWEN_PORT" "$LOG_DIR/qwen_attempt1.log"; then
+    if try_launch "$QWEN_REPO" "$QWEN_PORT" "$LOG_DIR/qwen_attempt1.log" --enforce-eager; then
         echo "$ATTEMPT_PID" > "$(pidfile qwen)"
         write_manifest qwen "$QWEN_REPO" "$QWEN_PORT" "$(resolve_hf_revision "$QWEN_REPO")" false "" "default"
         log "qwen up: $QWEN_REPO, full context, no downgrade."
@@ -239,7 +295,7 @@ elif [ "$TARGET" = "qwen" ]; then
     fi
     log "attempt 1 looks like an OOM. === attempt 2/3: reduced max-model-len=65536 ==="
 
-    if try_launch "$QWEN_REPO" "$QWEN_PORT" "$LOG_DIR/qwen_attempt2.log" --max-model-len 65536; then
+    if try_launch "$QWEN_REPO" "$QWEN_PORT" "$LOG_DIR/qwen_attempt2.log" --max-model-len 65536 --enforce-eager; then
         echo "$ATTEMPT_PID" > "$(pidfile qwen)"
         write_manifest qwen "$QWEN_REPO" "$QWEN_PORT" "$(resolve_hf_revision "$QWEN_REPO")" true \
             "OOM at full context on 1x${GPU_NAME}; reduced max-model-len to 65536" "65536"
@@ -253,7 +309,7 @@ elif [ "$TARGET" = "qwen" ]; then
     fi
     log "attempt 2 still OOM. === attempt 3/3: fallback to ${QWEN_FALLBACK_REPO} ==="
 
-    if try_launch "$QWEN_FALLBACK_REPO" "$QWEN_PORT" "$LOG_DIR/qwen_attempt3.log"; then
+    if try_launch "$QWEN_FALLBACK_REPO" "$QWEN_PORT" "$LOG_DIR/qwen_attempt3.log" --enforce-eager; then
         echo "$ATTEMPT_PID" > "$(pidfile qwen)"
         write_manifest qwen "$QWEN_FALLBACK_REPO" "$QWEN_PORT" "$(resolve_hf_revision "$QWEN_FALLBACK_REPO")" true \
             "Qwen3-Coder-Next-FP8 OOM'd even at max-model-len=65536 on 1x${GPU_NAME}; downgraded model to Qwen3-Coder-30B-A3B-Instruct" ""
