@@ -75,42 +75,46 @@ Level 1 전체 100개 중 **37개** 선정 (목표 30–40개 충족).
   경로(cuda/triton/tilelang/PTX-custom-wrapper)에 태울 때 dtype 캐스팅이
   기대대로 동작하는지 (§4의 정밀도 이슈와 직결).
 
-## 4. 미해결 결정 사항 — PI 확인 필요
+## 4. 결정 사항
 
-### 4.1 TileLang 정밀도 제약
+### 4.1 정밀도: 4개 언어 전부 fp16 통일 (PI 승인, 2026-08-19)
 
-`third_party/KernelBench/src/kernelbench/eval.py`의 `eval_kernel_against_ref`:
+**결정: 선택지 (a) 채택 — CUDA C++·PTX·Triton·TileLang 전부 fp16으로 통일한다.**
 
-```python
-if backend_lower == "tilelang":
-    assert precision == torch.float16 or precision == torch.bfloat16, \
-        "TileLang only supports fp16 or bfloat16"
-```
+**근거**:
+1. **교란(confound) 제거.** 2×2 설계는 "언어만 바꾸고 나머지는 통제"가 전제다.
+   TileLang 셀만 하니스 제약으로 fp16이 강제되는 상태에서 나머지 3언어를 fp32로
+   두면, 정확률 차이가 표현/자원 수준 때문인지 정밀도 때문인지 분리할 수 없다.
+   전부 fp16으로 맞추면 이 교란이 원천 제거된다.
+2. **배포 관행과의 정합.** 실제 GPU 커널 배포(추론 서빙 등)에서 fp16/bf16은
+   예외가 아니라 표준에 가깝다 — "저정밀도에서의 언어 비교"로 프레이밍을
+   바꾸는 것이 인위적 제약이 아니라 오히려 현실적인 조건 설정이다.
+3. RESEARCH_CONTEXT.md §5의 "값을 정하면 전 조건 고정" 원칙과 정합하고, 언어별
+   분기 구현이 없어 공정성 위협(§6.3 컴파일러 혼입)도 추가로 만들지 않는다.
 
-KernelBench 표준 하니스에 있는 하드코딩된 제약이다 (우리가 만든 게 아니고,
-"자체 검증기를 만들지 말 것" 규칙상 우회하지 않았다). 반면 CUDA C++는
-fp32 기본, Triton/PTX는 임의 정밀도가 가능하다.
+**승인 시 부여된 4개 조건과 이행 방법**:
 
-**이게 왜 문제인가**: 2×2 설계가 "언어만 바꾸고 나머지는 통제"를 전제하는데,
-TileLang 셀만 강제로 fp16/bf16이면 정밀도가 언어와 교란(confound)된다.
-정확률 차이가 "표현/자원 수준" 때문인지 "정밀도" 때문인지 분리가 안 된다.
+| # | 조건 | 이행 |
+|---|------|------|
+| ① | 베이스라인 eager도 fp16으로 측정 | `evaluate.py`가 참조(PyTorch eager) 실행 시에도 입력·모델을 fp16으로 캐스팅한 뒤 타이밍 — fp32 기준값과 섞지 않는다. CLAUDE.md 타이밍 프로토콜(warmup 25/측정 100/중앙값)은 그대로, dtype만 fp16. |
+| ② | 하니스 fp16 판정 기준(atol/rtol) 불변경, 실값 기록 | KernelBench `eval.py:get_tolerance_for_precision`의 fp16 값 **atol=rtol=1e-2**를 그대로 사용 (하드코딩된 값, 수정하지 않음). 아래 표로 기록. |
+| ③ | dtype 명시는 공통 템플릿에만, 언어 블록에 half 힌트 금지 | `prompts/PROMPT_SPEC.md` §1 공통 템플릿에 "All tensor inputs and outputs are float16 (fp16)"로 이미 위치, §2의 4개 언어 블록에는 정밀도·half 처리 언급 없음 — 조건 충족 확인함 (변경 불필요). |
+| ④ | PI 결정과 근거를 SELECTION.md에 기록 | 이 절. |
 
-**선택지** (하나를 정해서 CLAUDE.md에 박아야 함 — 실험 설계 변경이라 PI 승인 필요):
-- (a) **4개 언어 전부 fp16으로 통일.** 가장 깨끗한 통제. 단, CUDA/Triton은
-  fp32도 잘 하므로 "저정밀도에서의 언어 비교"로 프레이밍이 바뀜 — 논문
-  Setup에 명시 필요.
-  - **(a) 권장.** RESEARCH_CONTEXT.md §5가 이미 온도·seed 등 "값을 정하면
-  전 조건 고정"을 원칙으로 삼고 있어 이 원칙과 가장 잘 맞고, 별도 구현
-  분기가 없어 공정성 위협(§6.3 컴파일러 혼입)도 덜 만든다.
-- (b) 정밀도를 별도 통제 축으로 명시하고 TileLang만 fp16, 나머지 3언어는
-  fp32로 실행 — "정밀도 차이"를 결과 해석 시 한계로 명시. 구현은 더 간단하지만
-  표 1(2×2 메인 결과)의 해석에 각주가 필요해짐.
-- (c) TileLang을 이 실험에서 제외 — RESEARCH_CONTEXT.md 자체가 배제하는
-  선택지(3언어 후퇴는 PTX 지연시에만, PI 결정 사항)라 채택 안 함.
+**적용되는 정확성 판정 기준값** (조건 ②, 변경 금지 — 논문 Setup에 이 값 그대로 명시):
 
-이 문서에서는 결정하지 않았다 — **다음 세션에서 PI 확인 후 CLAUDE.md에 기록하고
-`scripts/generate.py`에 반영해야 진행 가능.**
+| precision | atol | rtol | 출처 |
+|-----------|------|------|------|
+| fp16 (torch.float16) | 1e-2 | 1e-2 | `third_party/KernelBench/src/kernelbench/eval.py::get_tolerance_for_precision` |
+
+**TileLang 정밀도 제약의 출처** (참고, 결정에 영향 없음 — 이미 fp16으로 통일하므로
+무관해졌으나 기록 보존): `eval.py`의 `eval_kernel_against_ref`에 아래 assert가
+있고, 이는 **KernelBench 하니스의 정책이지 TileLang 자체의 한계가 아니다** —
+`scripts/smoke_tilelang.py`에서 KernelBench 하니스를 거치지 않고 TileLang을 직접
+호출했을 때는 fp32 elementwise add가 정상 컴파일·실행됨(max_diff=0.000e+00)을
+2026-08-19에 직접 확인했다.
 
 ### 4.2 doc_ablation_subset_of_20의 상태
 
-초안일 뿐 미승인. §1 표 참고.
+아직 초안, PI 미승인. §1 표 참고 — 이번 결정 범위(§4.1, PROMPT_SPEC.md §6)에
+포함되지 않았다.

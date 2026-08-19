@@ -112,8 +112,13 @@ ptxas 어셈블(PTX→cubin) → `cuModuleLoadData` → `cuLaunchKernel` → PyT
 - PTX는 상류에 backend 자체가 없어 `harness/ptx/ptx_harness.py` 신규 작성 —
   위 PTX go/no-go 절 참고.
 - 과제 선정: `tasks/level1_subset.json` + `tasks/SELECTION.md` — Level 1 100개 중
-  37개, 선정 기준·제외 근거 문서화. **TileLang 정밀도(fp16/bf16 강제) 처리 방식은
-  PI 미결 — SELECTION.md §4.1 참고, 실험 실행 전 확정 필요.**
+  37개, 선정 기준·제외 근거 문서화.
+- **정밀도 결정 (PI 승인, 2026-08-19): 4개 언어 전부 fp16 통일.** 근거·4개 이행
+  조건·판정 기준값(atol=rtol=1e-2)은 `tasks/SELECTION.md` §4.1 참고. 프롬프트
+  반영은 `prompts/PROMPT_SPEC.md` §1 공통 템플릿.
+- **프롬프트: `prompts/PROMPT_SPEC.md`가 유일한 진실.** 변경은 git commit +
+  전 언어 동시 적용 (파일 자체 원칙, 1행). §6 두 항목(PTX 하니스 API 노출 수준,
+  accumulation 정밀도 자유)도 PI 승인 완료 — 결정 사항으로 §6에 기록됨.
 - 타이밍 프로토콜: warmup 25회, 측정 100회, 중앙값. torch.cuda.synchronize 필수.
   베이스라인은 PyTorch eager, 같은 GPU에서 매 실행 재측정 (문헌 수치 사용 금지).
 ## 디렉터리 구조
