@@ -92,12 +92,19 @@ Provide the corrected complete solution in a single code block.
 - 에러 원문만. 요약·해석·힌트 추가 금지 (에러 메시지의 "LLM 가독성" 측정 목적).
 - 정확성 실패(컴파일은 됐으나 출력 불일치)에는 수리 기회 없음 — 오답 확정.
 
-## 4. 생성 파라미터 (전 조건 고정)
+## 4. 생성 파라미터 (전 조건 고정, 2026-08-19 확정)
 
-- temperature: 0.8, top_p: 기본값, 샘플 수: 5 (독립 호출)
+- temperature: **0.8** (확정), top_p: 기본값, 샘플 수: 5 (독립 호출)
+- **seed: 매 호출 명시적으로 고정해 지정하고 로그에 기록** (재현성 확보 목적).
+  같은 과제·언어·조건의 샘플 `i`는 `base_seed + i`. vLLM의 OpenAI 호환
+  엔드포인트는 `seed` 파라미터를 항상 받으므로 예외 없이 채운다.
 - max output tokens: 8192 (PTX가 장문이 되므로 여유 확보; 잘림 발생 시 기록하고
   해당 샘플은 "truncated"로 분류 — 실패의 한 종류로 집계)
-- 모델 버전 문자열·타임스탬프·전체 프롬프트/응답 로깅 (CLAUDE.md 규칙 4)
+- 모델: **오픈웨이트 2개, 로컬 vLLM 서빙** — Qwen3-Coder-Next-80B-A3B(공식 FP8
+  체크포인트) + gpt-oss-120b (2026-08-19 API 경로 폐기, CLAUDE.md 참고).
+  기록 항목(API 시절의 "모델 버전 문자열" 한 줄을 대체): HF 체크포인트
+  리비전(commit hash) + vLLM 버전 + dtype + 위 sampling 파라미터 전부 +
+  타임스탬프 + 전체 프롬프트/응답 (CLAUDE.md 규칙 4).
 
 ## 5. 응답 파싱 규약
 

@@ -17,7 +17,10 @@ ML for Systems @ NeurIPS 2026 워크숍 논문 실험.
 | 높은 추상화    | Triton        | TileLang      |
  
 - 과제: KernelBench Level 1에서 4개 언어 모두 표현 가능한 30–40개
-- 모델: OpenAI GPT 최신 1개 + Anthropic Claude 최신 1개 (버전 문자열 고정, 로그에 기록)
+- 모델: **오픈웨이트 2개, 로컬 vLLM 서빙** (2026-08-19 API 경로 폐기, PI 지시).
+  Qwen3-Coder-Next-80B-A3B(공식 FP8 체크포인트) + gpt-oss-120b.
+  기록 항목: HF 체크포인트 리비전(commit hash) + vLLM 버전 + dtype + sampling
+  파라미터 — "버전 문자열"이 아니라 이 4가지 전부를 로그에 남긴다.
 - 프로토콜: 언어당 pass@5 one-shot + 컴파일 에러 메시지만 주는 수리 1턴
 - Ablation: 문서 주입 (언어 명세 ~5k 토큰 in-context), 과제 20개 부분집합
 - 지표: 컴파일률 / 정확률 / fast_1 / speedup geomean / 솔루션당 토큰 수 / 오류 분류 / 수리 후 회복률
@@ -32,8 +35,14 @@ ML for Systems @ NeurIPS 2026 워크숍 논문 실험.
 3. **프롬프트 템플릿 변경은 전 언어에 동시 적용**하고 git commit으로 남긴다.
    특정 언어에만 유리한 힌트 추가 금지.
 4. 모든 실험 실행은 다음을 로그로 남긴다:
-   모델 버전 문자열, temperature, seed, 프롬프트 전문(해시 + 원문), 타임스탬프,
-   torch/CUDA/드라이버 버전, 응답 원문 전체.
+   HF 체크포인트 리비전(commit hash) + vLLM 버전 + dtype, temperature, seed,
+   프롬프트 전문(해시 + 원문), 타임스탬프, torch/CUDA/드라이버 버전(평가 서버 기준),
+   응답 원문 전체.
+5. **생성은 학과 H100×2 서버(별도 기계, `scripts/serve_h100.sh`로 vLLM 서빙),
+   평가는 이 서버(sm_120) 그대로.** 두 기계는 물리적으로 분리 — results/raw/를
+   생성 서버에서 평가 서버로 옮기는 방법(공유 파일시스템 여부, 아니면 rsync/scp)은
+   실행 시점에 확정해서 여기 기록할 것. API 키 개념 자체가 사라졌으므로 관련
+   차단 로직은 `--base-url` 필수 인자로 대체됐다 (`scripts/generate.py` 참고).
 ## 환경
  
 - GPU: ~~RTX A6000 / sm_86~~ — **실측 결과 문서와 불일치. 2026-08-19 첫 세션에서 정정.**
@@ -89,6 +98,26 @@ CUDA C++·TileLang 두 트랙은 컴파일 자체가 실패하므로, results/ �
 > 다르다. speedup 분포 해석과 논문 Setup의 하드웨어 기술을 모두 이 값 기준으로 쓸 것.
 > 문헌의 A6000 수치와 비교하지 말 것 (원래 규칙: 베이스라인 매 실행 재측정).
 
+### 생성 서버 (H100×2, 별도 기계) — 2026-08-19 아키텍처 변경
+
+API 경로를 폐기하고 로컬 vLLM 서빙으로 전환. `scripts/serve_h100.sh`가
+자체 완결(conda/pip 환경 생성부터 서빙까지) — 사용자가 H100 서버에서 직접 실행.
+sudo 불필요. 실행 전 `nvidia-smi`로 GPU 2장이 비어 있는지 확인하고, 점유
+중이면 중단한다.
+
+| 항목 | 값 |
+|------|-----|
+| 모델 A | Qwen3-Coder-Next-80B-A3B, 공식 FP8 체크포인트, GPU 0, 포트 8000 |
+| 모델 B | gpt-oss-120b, GPU 1, 포트 8001 |
+| HF 체크포인트 리비전 | **실행 후 기록 예정** (`scripts/serve_h100.sh` 로그에서 확인, git commit hash) |
+| vLLM 버전 | **실행 후 기록 예정** |
+| dtype | 모델 A: FP8(체크포인트 자체가 FP8) / 모델 B: 배포 기본값(실행 후 확인) |
+| GPU 모델 | **실행 후 확인** (사용자가 "H100×2"라 명시 — nvidia-smi로 재확인) |
+
+두 서버 모두 OpenAI 호환 엔드포인트(`/v1/chat/completions`)로 뜬다.
+`scripts/generate.py`는 `--base-url`(필수, 기본값 없음)로 이 엔드포인트를 받는다.
+API 키는 없음 — vLLM은 인증하지 않으므로 더미 문자열을 OpenAI SDK에 채워 넣는다.
+
 ### PTX go/no-go 판정: **GO** (2026-08-19)
 
 `harness/ptx/ptx_harness.py` (ctypes 기반 cuModuleLoad 래퍼, 의존성 없음) +
@@ -129,7 +158,8 @@ kernel-lang-2x2/
 ├── tasks/                 # 과제 정의 (KernelBench L1 부분집합 + 선정/제외 기준표)
 ├── prompts/               # 언어별 프롬프트 템플릿 + 문서 주입용 명세
 ├── scripts/
-│   ├── generate.py        # API 호출 생성기 (유일한 생성 경로)
+│   ├── generate.py        # 로컬 vLLM 호출 생성기 (유일한 생성 경로)
+│   ├── serve_h100.sh      # H100×2 서버에서 실행 — vLLM 서빙 (사용자가 직접 실행)
 │   ├── evaluate.py        # 컴파일 + 정확성 + 타이밍
 │   └── analyze.py         # 집계, 표/그림 생성
 ├── harness/
@@ -165,8 +195,13 @@ kernel-lang-2x2/
 ## 작업 방식
  
 - 모든 변경은 git commit. 커밋 메시지는 영어, 한 줄 요약.
-- 장시간 실행은 tmux 세션 `exp` 안에서. 실행 전 예상 API 비용을 추산해 보고할 것.
-- API 키는 환경변수(OPENAI_API_KEY, ANTHROPIC_API_KEY)로만. 코드·로그에 절대 기록 금지.
+- 장시간 실행은 tmux 세션 `exp` 안에서.
+- **API 키 대신 로컬 엔드포인트.** `scripts/generate.py`는 `--base-url`을 필수
+  인자로 요구하고 기본값을 두지 않는다 (오타로 엉뚱한 서버를 치는 사고 방지) —
+  과거 "OPENAI_API_KEY/ANTHROPIC_API_KEY 미설정이면 거부" 로직은 "base_url
+  미지정이면 거부"로 대체됐다. 비용 개념이 없어졌으므로 "실행 전 예상 API
+  비용 추산" 규칙은 폐기 — 대신 실행 전 파일럿(2과제×4언어×2샘플×2모델)으로
+  파싱/컴파일/정확성이 살아있는지 확인하고 보고한다.
 - 막히면 임의로 우회하지 말고 선택지를 정리해 보고할 것. 특히 PTX 래퍼가
   이틀 이상 지연되면 즉시 보고 (3언어 후퇴 결정은 PI가 한다).
  
