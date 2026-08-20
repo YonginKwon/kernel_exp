@@ -34,6 +34,7 @@ enforced even though this pilot build doesn't measure timing yet, so nobody
 has to remember to add the check later once timing does land.
 """
 import argparse
+import hashlib
 import json
 import multiprocessing as mp
 import os
@@ -42,6 +43,7 @@ import subprocess
 import sys
 import tempfile
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 import numpy as np
@@ -278,7 +280,7 @@ def os_remove_quiet(path):
         pass
 
 
-def eval_one(record: dict, device) -> dict:
+def eval_one(record: dict, device, precompiled_build_dir: str | None = None) -> dict:
     if record["status"] != "generated":
         return {"compiled": False, "correctness": False, "eval_skipped_reason": record["status"]}
 
@@ -308,8 +310,22 @@ def eval_one(record: dict, device) -> dict:
     # empirically -- this is exactly what happened the first time this
     # retry logic was added, 2026-08-19.
     build_dirs = []
+    _first_build_dir_call = [True]
 
     def fresh_build_dir():
+        # P0-b (2026-08-20): if a precompiled build dir was handed in (see
+        # precompile_cuda_batch()), the FIRST call reuses it -- ninja sees
+        # identical source/flags already built and no-ops instead of
+        # recompiling, so the nvcc cost happened earlier in parallel, not
+        # here in the serialized GPU-touching pass. Every subsequent call
+        # (this function's own internal retry/recovery attempts below)
+        # still gets a genuinely fresh dir, exactly as before -- reusing a
+        # dir across a *failed* attempt is the documented staleness bug
+        # this project already hit once (see the retry comment above).
+        if precompiled_build_dir is not None and _first_build_dir_call[0]:
+            _first_build_dir_call[0] = False
+            build_dirs.append(precompiled_build_dir)
+            return precompiled_build_dir
         d = tempfile.mkdtemp(prefix="k2x2_eval_")
         build_dirs.append(d)
         return d
@@ -361,11 +377,11 @@ def eval_one(record: dict, device) -> dict:
     }
 
 
-def _eval_worker_entry(record, result_conn):
+def _eval_worker_entry(record, result_conn, precompiled_build_dir=None):
     """Runs in an isolated (spawn) subprocess -- see eval_one_isolated()."""
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     try:
-        result = eval_one(record, device)
+        result = eval_one(record, device, precompiled_build_dir=precompiled_build_dir)
     except Exception as e:
         result = {"compiled": False, "correctness": False,
                    "eval_exception": f"{type(e).__name__}: {e}"}
@@ -375,7 +391,7 @@ def _eval_worker_entry(record, result_conn):
         result_conn.close()
 
 
-def eval_one_isolated(record: dict, timeout: int = 300) -> dict:
+def eval_one_isolated(record: dict, timeout: int = 300, precompiled_build_dir: str | None = None) -> dict:
     """Runs eval_one() in a fresh subprocess (multiprocessing 'spawn').
 
     NOTE (2026-08-20): a genuinely buggy generated kernel can trigger a CUDA
@@ -393,7 +409,7 @@ def eval_one_isolated(record: dict, timeout: int = 300) -> dict:
     eval_exception, not silently dropped."""
     ctx = mp.get_context("spawn")
     parent_conn, child_conn = ctx.Pipe(duplex=False)
-    proc = ctx.Process(target=_eval_worker_entry, args=(record, child_conn))
+    proc = ctx.Process(target=_eval_worker_entry, args=(record, child_conn, precompiled_build_dir))
     proc.start()
     child_conn.close()
 
@@ -420,6 +436,143 @@ def eval_one_isolated(record: dict, timeout: int = 300) -> dict:
                                f"(exitcode={proc.exitcode}) -- likely a CUDA "
                                f"context crash (e.g. illegal memory access) "
                                f"or a hang killed after a {timeout}s timeout"}
+
+
+PRECOMPILE_BUILD_ROOT = REPO_ROOT / "results" / ".eval_build_cache"
+PRECOMPILE_WORKERS = 16  # PI instruction 2026-08-20 (P0-b): nvcc workers >= 16
+
+
+def deterministic_build_dir(path: str) -> Path:
+    """Stable per-sample build dir (unlike eval_one's own tempfile.mkdtemp,
+    which is deliberately fresh every call -- see its docstring). Needs to be
+    stable ONLY so a parallel precompile pass and the later serialized real
+    pass agree on the same directory for the SAME sample's SAME code; each
+    is still a dedicated directory, no cross-sample sharing."""
+    h = hashlib.sha1(path.encode()).hexdigest()[:16]
+    d = PRECOMPILE_BUILD_ROOT / h
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def _precompile_worker_entry(record, build_dir, result_conn):
+    """Runs in an isolated (spawn) subprocess. CUDA only: compiles + dlopens
+    the generated extension (kb_eval.load_custom_model) WITHOUT ever
+    instantiating a model or touching a CUDA device -- torch.utils.
+    cpp_extension's build+import step is pure host-side compiler/linker work;
+    a CUDA context is only created lazily by the first actual device op
+    (e.g. `.to(device="cuda")`), which this deliberately never calls. That is
+    what makes it safe to run many of these concurrently on one GPU-having
+    machine: nothing here touches the GPU, so P0-b's requirement (decouple
+    compile from the GPU stage, nvcc workers >= 16) can run genuinely in
+    parallel while the real eval loop stays serialized for GPU safety.
+
+    On failure, captures the real compiler error here (mirroring
+    _recover_real_compile_error's exact error-formatting shape) instead of
+    just a bool -- a confirmed compile failure needs no GPU-touching work at
+    all, so the caller can build the sample's final eval record directly
+    from this and skip the serialized pass entirely for it (measured: without
+    this, failing samples were compiled TWICE -- once here, once again in
+    the serial pass -- which made small failure-heavy batches net SLOWER
+    with precompile on than off; this fixes that)."""
+    try:
+        context = {}
+        kb_eval.load_custom_model(record["parsed_code"], context, build_directory=str(build_dir))
+        if context.get("ModelNew") is None:
+            result_conn.send({"ok": False, "metadata": {
+                "compilation_error_name": "NoModelNew",
+                "compilation_error": "ModelNew not defined in generated code"}})
+        else:
+            result_conn.send({"ok": True, "metadata": None})
+    except Exception as e:
+        result_conn.send({"ok": False, "metadata": {
+            "compilation_error_name": type(e).__name__,
+            "compilation_error": str(e)[:COMPILE_ERROR_LOG_CAP]}})
+    finally:
+        result_conn.close()
+
+
+def _precompile_one(record, build_dir, timeout=300):
+    """Returns {"ok": True} (compiled, build_dir is reusable), {"ok": False,
+    "metadata": {...}} (confirmed compile failure, real error captured), or
+    None (subprocess crashed/timed out -- caller falls back to treating this
+    sample as not-precompiled, i.e. normal fresh-tempdir behavior in the
+    serial pass, same as if precompile had never run for it)."""
+    ctx = mp.get_context("spawn")
+    parent_conn, child_conn = ctx.Pipe(duplex=False)
+    proc = ctx.Process(target=_precompile_worker_entry, args=(record, build_dir, child_conn))
+    proc.start()
+    child_conn.close()
+    result = None
+    if parent_conn.poll(timeout):
+        try:
+            result = parent_conn.recv()
+        except EOFError:
+            result = None
+    parent_conn.close()
+    proc.join(timeout=10)
+    if proc.is_alive():
+        proc.terminate()
+        proc.join(timeout=10)
+    if proc.is_alive():
+        proc.kill()
+        proc.join()
+    return result
+
+
+def precompile_cuda_batch(records_with_paths: list, max_workers: int = PRECOMPILE_WORKERS):
+    """Precompiles every CUDA sample's extension in parallel (up to
+    max_workers concurrent nvcc/ninja invocations, each in its own isolated
+    subprocess + build dir -- pure CPU work, no GPU touch, see
+    _precompile_worker_entry).
+
+    Returns (build_dir_map, failure_entries):
+    - build_dir_map: {path: build_dir} for samples that compiled -- the
+      serial pass reuses this dir (ninja no-ops on the unchanged build, so
+      the nvcc cost already happened here, in parallel) and proceeds
+      straight to the GPU-touching correctness check.
+    - failure_entries: {path: metadata_dict} for samples with a CONFIRMED
+      compile failure -- the caller builds the final eval record directly
+      from this and skips the serial pass for it entirely (no second
+      compile attempt, no subprocess).
+    A sample missing from BOTH dicts means its precompile subprocess crashed
+    or timed out (rare) -- the serial pass treats it exactly as if
+    precompile had never run (fresh tempdir, full retry logic intact).
+
+    records_with_paths: list of (path_str, record) for CUDA, gen_status=="generated" only."""
+    if not records_with_paths:
+        return {}, {}
+    print(f"[precompile] {len(records_with_paths)} CUDA sample(s), "
+          f"{max_workers} parallel nvcc worker(s)...")
+    build_dir_map = {}
+    failure_entries = {}
+    with ThreadPoolExecutor(max_workers=max_workers) as pool:
+        futures = {}
+        for path, record in records_with_paths:
+            build_dir = deterministic_build_dir(path)
+            futures[pool.submit(_precompile_one, record, build_dir)] = (path, build_dir)
+        done = 0
+        for fut in as_completed(futures):
+            path, build_dir = futures[fut]
+            done += 1
+            try:
+                result = fut.result()
+            except Exception:
+                result = None
+            if result is None:
+                shutil.rmtree(build_dir, ignore_errors=True)  # crashed/timed out -- fall back
+            elif result["ok"]:
+                build_dir_map[path] = str(build_dir)
+            else:
+                failure_entries[path] = result["metadata"]
+                shutil.rmtree(build_dir, ignore_errors=True)  # confirmed failure, dir no longer needed
+            if done % 20 == 0 or done == len(futures):
+                print(f"[precompile] {done}/{len(futures)} done "
+                      f"({len(build_dir_map)} compiled, {len(failure_entries)} confirmed-failed)")
+    skipped_gpu_pass = len(failure_entries)
+    print(f"[precompile] {len(build_dir_map)}/{len(records_with_paths)} compiled successfully "
+          f"(reused in serial pass), {skipped_gpu_pass} confirmed-failed (serial pass SKIPPED "
+          f"for these -- no second compile attempt)")
+    return build_dir_map, failure_entries
 
 
 NUM_WARMUP = 25   # PI protocol (CLAUDE.md / tasks/SELECTION.md #4.1): warmup 25, measure 100, median
@@ -701,18 +854,39 @@ def load_checkpoint_records(path: Path) -> list:
 
 
 def run_eval(language=None, condition=None, model_dir=None, task=None, raw_dir=RAW_DIR,
-             checkpoint_path=None, prior_records=None):
+             checkpoint_path=None, prior_records=None, precompile_workers=PRECOMPILE_WORKERS):
     records = list(prior_records or [])
     already_done = {r["path"] for r in records}
     skipped = 0
+
+    to_eval = []
     for path, record in find_samples(language, condition, model_dir, task, raw_dir):
         rel = str(path.relative_to(raw_dir))
         if rel in already_done:
             skipped += 1
             continue
-        result = eval_one_isolated(record)
+        to_eval.append((rel, record))
+
+    # P0-b (2026-08-20): parallel nvcc precompile for CUDA, decoupled from
+    # the serialized GPU-touching pass below -- see precompile_cuda_batch().
+    build_dir_map, precompile_failures = {}, {}
+    if precompile_workers > 1:
+        cuda_to_precompile = [(p, r) for p, r in to_eval
+                               if r["language"] == "cuda" and r["status"] == "generated"]
+        build_dir_map, precompile_failures = precompile_cuda_batch(
+            cuda_to_precompile, max_workers=precompile_workers)
+
+    for rel, record in to_eval:
+        if rel in precompile_failures:
+            # Confirmed compile failure already captured with the real
+            # compiler error during the parallel precompile pass -- no GPU
+            # touch needed for a failed compile, so skip the serial
+            # subprocess entirely (see precompile_cuda_batch's docstring).
+            result = {"compiled": False, "correctness": False, "metadata": precompile_failures[rel]}
+        else:
+            result = eval_one_isolated(record, precompiled_build_dir=build_dir_map.get(rel))
         entry = {
-            "path": str(path.relative_to(raw_dir)),
+            "path": rel,
             "task": record["task"], "task_family": record.get("task_family"),
             "language": record["language"], "condition": record["condition"],
             "model": record["model"], "sample_index": record["sample_index"],
@@ -774,6 +948,11 @@ def main():
                          "results/eval/docinject_run_....json) to pull compiled+correct records "
                          "from. Required with --timing -- no default, to avoid silently timing "
                          "the wrong run.")
+    ap.add_argument("--precompile-workers", type=int, default=PRECOMPILE_WORKERS,
+                    help="parallel nvcc/ninja workers for CUDA precompilation before the "
+                         "serialized GPU-touching eval pass (P0-b, 2026-08-20). Pure CPU work, "
+                         "no GPU touch -- see precompile_cuda_batch(). Set to 0 or 1 to disable "
+                         "and compile inline as before. Ignored with --timing.")
     args = ap.parse_args()
 
     assert_gpu_exclusive()
@@ -836,7 +1015,8 @@ def main():
         print(f"[eval] --resume {resume_path}: {len(prior_records)} sample(s) already evaluated")
 
     records = run_eval(args.language, args.condition, args.model_dir, args.task, Path(args.raw_dir),
-                        checkpoint_path=out_path, prior_records=prior_records)
+                        checkpoint_path=out_path, prior_records=prior_records,
+                        precompile_workers=args.precompile_workers)
     summary = summarize(records)
 
     print("\n=== summary (compiled / correct out of n, generated=parsed-ok count) ===")
