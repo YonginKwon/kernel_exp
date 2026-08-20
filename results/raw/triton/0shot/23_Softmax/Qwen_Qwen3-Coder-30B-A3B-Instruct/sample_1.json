@@ -1,0 +1,39 @@
+{
+  "task": "23_Softmax",
+  "task_family": "elementwise_activation",
+  "language": "triton",
+  "condition": "0shot",
+  "sample_index": 1,
+  "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+  "base_url": "http://localhost:8001/v1",
+  "hf_revision": "b2cff646eb4bb1d68355c01b18ae02e7cf42d120",
+  "vllm_version": "0.10.1",
+  "tensor_parallel_size": 1,
+  "temperature": 0.8,
+  "max_tokens": 8192,
+  "seed": 5001,
+  "timestamp": "2026-08-20T08:36:15+0900",
+  "prompt_sha256": "8f7f705d76f8454c7a7a8d41eea251b20c0afec65bb93bfca98ad6aa16ad4609",
+  "prompt": "You are given a PyTorch reference implementation of a neural network operator.\nWrite a functionally equivalent GPU kernel in Triton.\n\nRequirements:\n- All tensor inputs and outputs are float16 (fp16). Accumulation precision is\n  your choice unless the reference dictates otherwise.\n- Target GPU: NVIDIA A100 (compute capability 8.0).\n- Your kernel must be a drop-in replacement: same input shapes, same output\n  shapes and dtype as the reference.\n- Output ONLY the complete Triton solution inside a single code block.\n  No explanation outside the code block.\n\nWrite a Triton kernel (triton.jit) with a Python wrapper. Provide the full\nPython file defining ModelNew that calls your Triton kernel.\n\nReference implementation:\n```python\nimport torch\nimport torch.nn as nn\n\nclass Model(nn.Module):\n    \"\"\"\n    Simple model that performs a Softmax activation.\n    \"\"\"\n    def __init__(self):\n        super(Model, self).__init__()\n    \n    def forward(self, x: torch.Tensor) -> torch.Tensor:\n        \"\"\"\n        Applies Softmax activation to the input tensor.\n\n        Args:\n            x (torch.Tensor): Input tensor of shape (batch_size, num_features).\n\n        Returns:\n            torch.Tensor: Output tensor with Softmax applied, same shape as input.\n        \"\"\"\n        return torch.softmax(x, dim=1)\n\nbatch_size = 4096\ndim = 393216\n\ndef get_inputs():\n    x = torch.rand(batch_size, dim)\n    return [x]\n\ndef get_init_inputs():\n    return []  # No special initialization inputs needed\n```\n",
+  "env": {
+    "torch_version": "2.5.1+cu121",
+    "cuda_version": "12.1",
+    "gpu_name": "NVIDIA A100 80GB PCIe",
+    "compute_capability": [
+      8,
+      0
+    ],
+    "driver_version": "535.309.01\n535.309.01"
+  },
+  "response_raw": "```python\nimport torch\nimport triton\nimport triton.language as tl\n\n@triton.jit\ndef softmax_kernel(\n    input_ptr, \n    output_ptr, \n    n_cols,\n    BLOCK_SIZE: tl.constexpr,\n    fp8: tl.constexpr = False\n):\n    # Get the row index\n    row_idx = tl.program_id(0)\n    # Calculate the starting column index for this thread block\n    col_offset = tl.arange(0, BLOCK_SIZE)\n    \n    # Load input data for this row\n    input_ptrs = input_ptr + row_idx * n_cols + col_offset\n    mask = col_offset < n_cols\n    x = tl.load(input_ptrs, mask=mask, other=-float('inf'))\n    \n    # Subtract max for numerical stability\n    x_max = tl.max(x, axis=0)\n    x = x - x_max\n    \n    # Compute exp\n    x_exp = tl.exp(x)\n    \n    # Compute sum of exponentials\n    x_sum = tl.sum(x_exp, axis=0)\n    \n    # Compute softmax\n    softmax_output = x_exp / x_sum\n    \n    # Write result back to memory\n    output_ptrs = output_ptr + row_idx * n_cols + col_offset\n    tl.store(output_ptrs, softmax_output, mask=mask)\n\nclass ModelNew(torch.nn.Module):\n    def __init__(self):\n        super(ModelNew, self).__init__()\n        \n    def forward(self, x: torch.Tensor) -> torch.Tensor:\n        # Ensure input is float16\n        if x.dtype != torch.float16:\n            x = x.to(torch.float16)\n            \n        # Create output tensor\n        output = torch.empty_like(x)\n        \n        # Define block size\n        BLOCK_SIZE = 1024\n        \n        # Launch kernel\n        grid = (x.shape[0],)\n        softmax_kernel[grid](\n            x,\n            output,\n            x.shape[1],\n            BLOCK_SIZE=BLOCK_SIZE\n        )\n        \n        return output\n\n# Test function\ndef test_model():\n    batch_size = 4096\n    dim = 393216\n    \n    # Create random input\n    x = torch.rand(batch_size, dim, dtype=torch.float16)\n    \n    # Test PyTorch reference\n    model_ref = Model()\n    ref_output = model_ref(x)\n    \n    # Test Triton implementation\n    model_new = ModelNew()\n    new_output = model_new(x)\n    \n    # Compare results\n    print(\"Max difference:\", torch.max(torch.abs(ref_output - new_output)).item())\n    print(\"Mean difference:\", torch.mean(torch.abs(ref_output - new_output)).item())\n\n# Note: The reference implementation uses torch.softmax which operates on the last dimension by default\n# The Triton kernel assumes the same behavior - softmax along the last dimension (dim=1)\n# For a batch_size x dim tensor, it computes softmax along dim=1 (the feature dimension)\n```",
+  "response_finish_reason": "stop",
+  "usage": {
+    "completion_tokens": 617,
+    "prompt_tokens": 344,
+    "total_tokens": 961,
+    "completion_tokens_details": null,
+    "prompt_tokens_details": null
+  },
+  "parsed_code": "import torch\nimport triton\nimport triton.language as tl\n\n@triton.jit\ndef softmax_kernel(\n    input_ptr, \n    output_ptr, \n    n_cols,\n    BLOCK_SIZE: tl.constexpr,\n    fp8: tl.constexpr = False\n):\n    # Get the row index\n    row_idx = tl.program_id(0)\n    # Calculate the starting column index for this thread block\n    col_offset = tl.arange(0, BLOCK_SIZE)\n    \n    # Load input data for this row\n    input_ptrs = input_ptr + row_idx * n_cols + col_offset\n    mask = col_offset < n_cols\n    x = tl.load(input_ptrs, mask=mask, other=-float('inf'))\n    \n    # Subtract max for numerical stability\n    x_max = tl.max(x, axis=0)\n    x = x - x_max\n    \n    # Compute exp\n    x_exp = tl.exp(x)\n    \n    # Compute sum of exponentials\n    x_sum = tl.sum(x_exp, axis=0)\n    \n    # Compute softmax\n    softmax_output = x_exp / x_sum\n    \n    # Write result back to memory\n    output_ptrs = output_ptr + row_idx * n_cols + col_offset\n    tl.store(output_ptrs, softmax_output, mask=mask)\n\nclass ModelNew(torch.nn.Module):\n    def __init__(self):\n        super(ModelNew, self).__init__()\n        \n    def forward(self, x: torch.Tensor) -> torch.Tensor:\n        # Ensure input is float16\n        if x.dtype != torch.float16:\n            x = x.to(torch.float16)\n            \n        # Create output tensor\n        output = torch.empty_like(x)\n        \n        # Define block size\n        BLOCK_SIZE = 1024\n        \n        # Launch kernel\n        grid = (x.shape[0],)\n        softmax_kernel[grid](\n            x,\n            output,\n            x.shape[1],\n            BLOCK_SIZE=BLOCK_SIZE\n        )\n        \n        return output\n\n# Test function\ndef test_model():\n    batch_size = 4096\n    dim = 393216\n    \n    # Create random input\n    x = torch.rand(batch_size, dim, dtype=torch.float16)\n    \n    # Test PyTorch reference\n    model_ref = Model()\n    ref_output = model_ref(x)\n    \n    # Test Triton implementation\n    model_new = ModelNew()\n    new_output = model_new(x)\n    \n    # Compare results\n    print(\"Max difference:\", torch.max(torch.abs(ref_output - new_output)).item())\n    print(\"Mean difference:\", torch.mean(torch.abs(ref_output - new_output)).item())\n\n# Note: The reference implementation uses torch.softmax which operates on the last dimension by default\n# The Triton kernel assumes the same behavior - softmax along the last dimension (dim=1)\n# For a batch_size x dim tensor, it computes softmax along dim=1 (the feature dimension)\n",
+  "status": "generated"
+}

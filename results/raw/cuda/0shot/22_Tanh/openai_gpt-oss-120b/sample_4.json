@@ -1,0 +1,39 @@
+{
+  "task": "22_Tanh",
+  "task_family": "elementwise_activation",
+  "language": "cuda",
+  "condition": "0shot",
+  "sample_index": 4,
+  "model": "openai/gpt-oss-120b",
+  "base_url": "http://localhost:8000/v1",
+  "hf_revision": "b5c939de8f754692c1647ca79fbf85e8c1e70f8a",
+  "vllm_version": "0.10.1",
+  "tensor_parallel_size": 1,
+  "temperature": 0.8,
+  "max_tokens": 8192,
+  "seed": 1004,
+  "timestamp": "2026-08-20T06:52:44+0900",
+  "prompt_sha256": "ca7861921096e20a8235a6b7d1955ca082f6c931281c068dd42e080573839bda",
+  "prompt": "You are given a PyTorch reference implementation of a neural network operator.\nWrite a functionally equivalent GPU kernel in CUDA.\n\nRequirements:\n- All tensor inputs and outputs are float16 (fp16). Accumulation precision is\n  your choice unless the reference dictates otherwise.\n- Target GPU: NVIDIA A100 (compute capability 8.0).\n- Your kernel must be a drop-in replacement: same input shapes, same output\n  shapes and dtype as the reference.\n- Output ONLY the complete CUDA solution inside a single code block.\n  No explanation outside the code block.\n\nWrite CUDA C++ using inline PyTorch extension conventions\n(torch.utils.cpp_extension.load_inline). Provide the full Python file\ndefining ModelNew that compiles and launches your CUDA kernel.\nDo not pass a -std= (C++ standard) flag in extra_cflags or\nextra_cuda_cflags; the harness supplies the required C++ standard\nuniformly and overrides any you provide.\n\nReference implementation:\n```python\nimport torch\nimport torch.nn as nn\n\nclass Model(nn.Module):\n    \"\"\"\n    Simple model that performs a Tanh activation.\n    \"\"\"\n    def __init__(self):\n        super(Model, self).__init__()\n    \n    def forward(self, x: torch.Tensor) -> torch.Tensor:\n        \"\"\"\n        Applies Tanh activation to the input tensor.\n\n        Args:\n            x (torch.Tensor): Input tensor of any shape.\n\n        Returns:\n            torch.Tensor: Output tensor with Tanh applied, same shape as input.\n        \"\"\"\n        return torch.tanh(x)\n\nbatch_size = 4096\ndim = 393216\n\ndef get_inputs():\n    x = torch.rand(batch_size, dim)\n    return [x]\n\ndef get_init_inputs():\n    return []  # No special initialization inputs needed\n```\n",
+  "env": {
+    "torch_version": "2.5.1+cu121",
+    "cuda_version": "12.1",
+    "gpu_name": "NVIDIA A100 80GB PCIe",
+    "compute_capability": [
+      8,
+      0
+    ],
+    "driver_version": "535.309.01\n535.309.01"
+  },
+  "response_raw": "```python\nimport torch\nimport torch.nn as nn\nfrom torch.utils.cpp_extension import load_inline\n\n# CUDA kernel source implementing element\u2011wise tanh for fp16 tensors\ncuda_src = r'''\n#include <torch/extension.h>\n#include <cuda.h>\n#include <cuda_runtime.h>\n#include <cuda_fp16.h>\n#include <cmath>\n\n__global__ void tanh_kernel(const half* __restrict__ input,\n                            half* __restrict__ output,\n                            size_t N) {\n    size_t idx = blockIdx.x * blockDim.x + threadIdx.x;\n    size_t stride = blockDim.x * gridDim.x;\n    for (size_t i = idx; i < N; i += stride) {\n        half x = input[i];\n        float xf = __half2float(x);\n        float yf = tanhf(xf);\n        output[i] = __float2half(yf);\n    }\n}\n\ntorch::Tensor tanh_fp16(torch::Tensor input) {\n    TORCH_CHECK(input.is_cuda(), \"input must be a CUDA tensor\");\n    TORCH_CHECK(input.dtype() == torch::kHalf, \"input must be fp16 (half) dtype\");\n\n    auto output = torch::empty_like(input);\n    const size_t N = input.numel();\n\n    const int threads = 256;\n    const int blocks = static_cast<int>((N + threads - 1) / threads);\n\n    tanh_kernel<<<blocks, threads>>>(input.data_ptr<half>(),\n                                     output.data_ptr<half>(),\n                                     N);\n    cudaError_t err = cudaGetLastError();\n    if (err != cudaSuccess) {\n        throw std::runtime_error(cudaGetErrorString(err));\n    }\n    return output;\n}\n\nPYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {\n    m.def(\"tanh_fp16\", &tanh_fp16, \"Half\u2011precision Tanh (CUDA)\");\n}\n'''\n\n# Build the extension in\u2011line\ntanh_mod = load_inline(name=\"tanh_fp16_cuda\",\n                       cpp_sources=\"\",\n                       cuda_sources=cuda_src,\n                       functions=[\"tanh_fp16\"],\n                       verbose=False)\n\nclass ModelNew(nn.Module):\n    \"\"\"Drop\u2011in replacement for the reference Model using a custom CUDA Tanh.\"\"\"\n    def __init__(self):\n        super().__init__()\n\n    def forward(self, x: torch.Tensor) -> torch.Tensor:\n        return tanh_mod.tanh_fp16(x)\n\ndef get_inputs():\n    batch_size = 4096\n    dim = 393216\n    # ensure fp16 on CUDA for the custom kernel\n    x = torch.rand(batch_size, dim, device='cuda', dtype=torch.half)\n    return [x]\n\ndef get_init_inputs():\n    return []  # No special initialization needed\n```",
+  "response_finish_reason": "stop",
+  "usage": {
+    "completion_tokens": 1668,
+    "prompt_tokens": 433,
+    "total_tokens": 2101,
+    "completion_tokens_details": null,
+    "prompt_tokens_details": null
+  },
+  "parsed_code": "import torch\nimport torch.nn as nn\nfrom torch.utils.cpp_extension import load_inline\n\n# CUDA kernel source implementing element\u2011wise tanh for fp16 tensors\ncuda_src = r'''\n#include <torch/extension.h>\n#include <cuda.h>\n#include <cuda_runtime.h>\n#include <cuda_fp16.h>\n#include <cmath>\n\n__global__ void tanh_kernel(const half* __restrict__ input,\n                            half* __restrict__ output,\n                            size_t N) {\n    size_t idx = blockIdx.x * blockDim.x + threadIdx.x;\n    size_t stride = blockDim.x * gridDim.x;\n    for (size_t i = idx; i < N; i += stride) {\n        half x = input[i];\n        float xf = __half2float(x);\n        float yf = tanhf(xf);\n        output[i] = __float2half(yf);\n    }\n}\n\ntorch::Tensor tanh_fp16(torch::Tensor input) {\n    TORCH_CHECK(input.is_cuda(), \"input must be a CUDA tensor\");\n    TORCH_CHECK(input.dtype() == torch::kHalf, \"input must be fp16 (half) dtype\");\n\n    auto output = torch::empty_like(input);\n    const size_t N = input.numel();\n\n    const int threads = 256;\n    const int blocks = static_cast<int>((N + threads - 1) / threads);\n\n    tanh_kernel<<<blocks, threads>>>(input.data_ptr<half>(),\n                                     output.data_ptr<half>(),\n                                     N);\n    cudaError_t err = cudaGetLastError();\n    if (err != cudaSuccess) {\n        throw std::runtime_error(cudaGetErrorString(err));\n    }\n    return output;\n}\n\nPYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {\n    m.def(\"tanh_fp16\", &tanh_fp16, \"Half\u2011precision Tanh (CUDA)\");\n}\n'''\n\n# Build the extension in\u2011line\ntanh_mod = load_inline(name=\"tanh_fp16_cuda\",\n                       cpp_sources=\"\",\n                       cuda_sources=cuda_src,\n                       functions=[\"tanh_fp16\"],\n                       verbose=False)\n\nclass ModelNew(nn.Module):\n    \"\"\"Drop\u2011in replacement for the reference Model using a custom CUDA Tanh.\"\"\"\n    def __init__(self):\n        super().__init__()\n\n    def forward(self, x: torch.Tensor) -> torch.Tensor:\n        return tanh_mod.tanh_fp16(x)\n\ndef get_inputs():\n    batch_size = 4096\n    dim = 393216\n    # ensure fp16 on CUDA for the custom kernel\n    x = torch.rand(batch_size, dim, device='cuda', dtype=torch.half)\n    return [x]\n\ndef get_init_inputs():\n    return []  # No special initialization needed\n",
+  "status": "generated"
+}

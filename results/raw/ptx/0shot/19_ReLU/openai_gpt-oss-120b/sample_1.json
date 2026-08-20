@@ -1,0 +1,39 @@
+{
+  "task": "19_ReLU",
+  "task_family": "elementwise_activation",
+  "language": "ptx",
+  "condition": "0shot",
+  "sample_index": 1,
+  "model": "openai/gpt-oss-120b",
+  "base_url": "http://localhost:8000/v1",
+  "hf_revision": "b5c939de8f754692c1647ca79fbf85e8c1e70f8a",
+  "vllm_version": "0.10.1",
+  "tensor_parallel_size": 1,
+  "temperature": 0.8,
+  "max_tokens": 8192,
+  "seed": 3001,
+  "timestamp": "2026-08-20T07:40:19+0900",
+  "prompt_sha256": "c606229cdf7dc4d65be07208c785e52f881b79cf12d38a8f4c396f35f77e174a",
+  "prompt": "You are given a PyTorch reference implementation of a neural network operator.\nWrite a functionally equivalent GPU kernel in PTX.\n\nRequirements:\n- All tensor inputs and outputs are float16 (fp16). Accumulation precision is\n  your choice unless the reference dictates otherwise.\n- Target GPU: NVIDIA A100 (compute capability 8.0).\n- Your kernel must be a drop-in replacement: same input shapes, same output\n  shapes and dtype as the reference.\n- Output ONLY the complete PTX solution inside a single code block.\n  No explanation outside the code block.\n\nWrite the complete kernel in raw PTX ISA (.target sm_80). Provide:\n(1) the PTX module as a Python string constant, and\n(2) a ModelNew class that loads it via the provided ptx_harness API:\n    module = ptx_load(PTX_SOURCE); ptx_launch(module, \"kernel_name\", grid, block, args).\nThe harness handles module loading; you write only the PTX and launch parameters.\n\nReference implementation:\n```python\nimport torch\nimport torch.nn as nn\n\nclass Model(nn.Module):\n    \"\"\"\n    Simple model that performs a ReLU activation.\n    \"\"\"\n    def __init__(self):\n        super(Model, self).__init__()\n    \n    def forward(self, x: torch.Tensor) -> torch.Tensor:\n        \"\"\"\n        Applies ReLU activation to the input tensor.\n\n        Args:\n            x (torch.Tensor): Input tensor of any shape.\n\n        Returns:\n            torch.Tensor: Output tensor with ReLU applied, same shape as input.\n        \"\"\"\n        return torch.relu(x)\n\nbatch_size = 4096\ndim = 393216\n\ndef get_inputs():\n    x = torch.rand(batch_size, dim)\n    return [x]\n\ndef get_init_inputs():\n    return []  # No special initialization inputs needed\n```\n",
+  "env": {
+    "torch_version": "2.5.1+cu121",
+    "cuda_version": "12.1",
+    "gpu_name": "NVIDIA A100 80GB PCIe",
+    "compute_capability": [
+      8,
+      0
+    ],
+    "driver_version": "535.309.01\n535.309.01"
+  },
+  "response_raw": "```python\n# PTX source for a half\u2011precision ReLU kernel (sm_80)\nPTX_SOURCE = r'''\n.version 7.0\n.target sm_80\n.address_size 64\n\n.visible .entry relu_fp16(\n    .param .u64 input_ptr,\n    .param .u64 output_ptr,\n    .param .u32 N\n)\n{\n    // registers\n    .reg .pred   %p<2>;\n    .reg .u32    %r<5>;\n    .reg .u64    %rd<4>;\n    .reg .f16    %f<2>;\n\n    // load parameters\n    ld.param.u64    %rd1, [input_ptr];\n    ld.param.u64    %rd2, [output_ptr];\n    ld.param.u32    %r4,  [N];\n\n    // thread index = blockIdx.x * blockDim.x + threadIdx.x\n    mov.u32 %r1, %ctaid.x;\n    mul.lo.u32 %r1, %r1, %ntid.x;\n    add.u32 %r1, %r1, %tid.x;          // %r1 = global linear index\n\n    // if (idx >= N) return;\n    setp.ge.u32 %p1, %r1, %r4;\n    @%p1 bra DONE;\n\n    // byte offset = idx * sizeof(half) = idx * 2\n    cvt.u64.u32 %rd3, %r1;\n    mul.wide.u32 %rd3, %r1, 2;\n\n    // load half\n    add.u64 %rd3, %rd1, %rd3;\n    ld.global.nc.f16 %f1, [%rd3];\n\n    // ReLU: max(val, 0)\n    mov.f16 %f2, 0F0000;               // half 0.0\n    max.f16 %f1, %f1, %f2;\n\n    // store result\n    add.u64 %rd3, %rd2, %rd3;\n    st.global.f16 [%rd3], %f1;\n\nDONE:\n    ret;\n}\n'''\n\n# ------------------------------------------------------------\n# Model wrapper that loads the PTX and launches the kernel.\n# ------------------------------------------------------------\nimport torch\nimport torch.nn as nn\n\nclass ModelNew(nn.Module):\n    def __init__(self):\n        super().__init__()\n        # ptx_load is provided by the harness\n        self.module = ptx_load(PTX_SOURCE)\n\n    def forward(self, x: torch.Tensor) -> torch.Tensor:\n        # Ensure half\u2011precision tensors\n        x_fp16 = x.to(torch.float16)\n        out = torch.empty_like(x_fp16)\n\n        # Total number of elements\n        n = x_fp16.numel()\n\n        # Launch configuration\n        block_dim = (256, 1, 1)\n        grid_dim  = ((n + block_dim[0] - 1) // block_dim[0], 1, 1)\n\n        # Arguments: input ptr, output ptr, element count (u32)\n        args = [x_fp16, out, n]\n\n        # ptx_launch is provided by the harness\n        ptx_launch(self.module, \"relu_fp16\", grid_dim, block_dim, args)\n\n        return out\n```",
+  "response_finish_reason": "stop",
+  "usage": {
+    "completion_tokens": 1782,
+    "prompt_tokens": 449,
+    "total_tokens": 2231,
+    "completion_tokens_details": null,
+    "prompt_tokens_details": null
+  },
+  "parsed_code": "# PTX source for a half\u2011precision ReLU kernel (sm_80)\nPTX_SOURCE = r'''\n.version 7.0\n.target sm_80\n.address_size 64\n\n.visible .entry relu_fp16(\n    .param .u64 input_ptr,\n    .param .u64 output_ptr,\n    .param .u32 N\n)\n{\n    // registers\n    .reg .pred   %p<2>;\n    .reg .u32    %r<5>;\n    .reg .u64    %rd<4>;\n    .reg .f16    %f<2>;\n\n    // load parameters\n    ld.param.u64    %rd1, [input_ptr];\n    ld.param.u64    %rd2, [output_ptr];\n    ld.param.u32    %r4,  [N];\n\n    // thread index = blockIdx.x * blockDim.x + threadIdx.x\n    mov.u32 %r1, %ctaid.x;\n    mul.lo.u32 %r1, %r1, %ntid.x;\n    add.u32 %r1, %r1, %tid.x;          // %r1 = global linear index\n\n    // if (idx >= N) return;\n    setp.ge.u32 %p1, %r1, %r4;\n    @%p1 bra DONE;\n\n    // byte offset = idx * sizeof(half) = idx * 2\n    cvt.u64.u32 %rd3, %r1;\n    mul.wide.u32 %rd3, %r1, 2;\n\n    // load half\n    add.u64 %rd3, %rd1, %rd3;\n    ld.global.nc.f16 %f1, [%rd3];\n\n    // ReLU: max(val, 0)\n    mov.f16 %f2, 0F0000;               // half 0.0\n    max.f16 %f1, %f1, %f2;\n\n    // store result\n    add.u64 %rd3, %rd2, %rd3;\n    st.global.f16 [%rd3], %f1;\n\nDONE:\n    ret;\n}\n'''\n\n# ------------------------------------------------------------\n# Model wrapper that loads the PTX and launches the kernel.\n# ------------------------------------------------------------\nimport torch\nimport torch.nn as nn\n\nclass ModelNew(nn.Module):\n    def __init__(self):\n        super().__init__()\n        # ptx_load is provided by the harness\n        self.module = ptx_load(PTX_SOURCE)\n\n    def forward(self, x: torch.Tensor) -> torch.Tensor:\n        # Ensure half\u2011precision tensors\n        x_fp16 = x.to(torch.float16)\n        out = torch.empty_like(x_fp16)\n\n        # Total number of elements\n        n = x_fp16.numel()\n\n        # Launch configuration\n        block_dim = (256, 1, 1)\n        grid_dim  = ((n + block_dim[0] - 1) // block_dim[0], 1, 1)\n\n        # Arguments: input ptr, output ptr, element count (u32)\n        args = [x_fp16, out, n]\n\n        # ptx_launch is provided by the harness\n        ptx_launch(self.module, \"relu_fp16\", grid_dim, block_dim, args)\n\n        return out\n",
+  "status": "generated"
+}

@@ -1,0 +1,39 @@
+{
+  "task": "95_CrossEntropyLoss",
+  "task_family": "loss",
+  "language": "triton",
+  "condition": "0shot",
+  "sample_index": 0,
+  "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+  "base_url": "http://localhost:8001/v1",
+  "hf_revision": "b2cff646eb4bb1d68355c01b18ae02e7cf42d120",
+  "vllm_version": "0.10.1",
+  "tensor_parallel_size": 1,
+  "temperature": 0.8,
+  "max_tokens": 8192,
+  "seed": 5000,
+  "timestamp": "2026-08-20T08:43:02+0900",
+  "prompt_sha256": "b421b6914a4ddbf84f6103a4ad19f71b60069c736b2b32024a93f384ed5ed427",
+  "prompt": "You are given a PyTorch reference implementation of a neural network operator.\nWrite a functionally equivalent GPU kernel in Triton.\n\nRequirements:\n- All tensor inputs and outputs are float16 (fp16). Accumulation precision is\n  your choice unless the reference dictates otherwise.\n- Target GPU: NVIDIA A100 (compute capability 8.0).\n- Your kernel must be a drop-in replacement: same input shapes, same output\n  shapes and dtype as the reference.\n- Output ONLY the complete Triton solution inside a single code block.\n  No explanation outside the code block.\n\nWrite a Triton kernel (triton.jit) with a Python wrapper. Provide the full\nPython file defining ModelNew that calls your Triton kernel.\n\nReference implementation:\n```python\nimport torch\nimport torch.nn as nn\n\nclass Model(nn.Module):\n    \"\"\"\n    A model that computes Cross Entropy Loss for multi-class classification tasks.\n\n    Parameters:\n        None\n    \"\"\"\n    def __init__(self):\n        super(Model, self).__init__()\n\n    def forward(self, predictions, targets):\n        return torch.nn.functional.cross_entropy(predictions, targets)\n\nbatch_size = 32768\nnum_classes = 4096\ninput_shape = (num_classes,)\ndim = 1\n\ndef get_inputs():\n    return [torch.rand(batch_size, *input_shape), torch.randint(0, num_classes, (batch_size,))]\n\ndef get_init_inputs():\n    return []\n\n```\n",
+  "env": {
+    "torch_version": "2.5.1+cu121",
+    "cuda_version": "12.1",
+    "gpu_name": "NVIDIA A100 80GB PCIe",
+    "compute_capability": [
+      8,
+      0
+    ],
+    "driver_version": "535.309.01\n535.309.01"
+  },
+  "response_raw": "```python\nimport torch\nimport triton\nimport triton.language as tl\n\n@triton.jit\ndef cross_entropy_kernel(\n    predictions_ptr, targets_ptr, output_ptr,\n    N, C,\n    BLOCK_SIZE: tl.constexpr\n):\n    # Get the row index\n    row_idx = tl.program_id(0)\n    \n    # Each program processes one row\n    if row_idx >= N:\n        return\n    \n    # Load predictions for this row\n    predictions_row = tl.load(predictions_ptr + row_idx * C + tl.arange(0, BLOCK_SIZE))\n    \n    # Clamp predictions to avoid log(0)\n    predictions_row = tl.clamp(predictions_row, 1e-8, 1e8)\n    \n    # Compute softmax\n    max_val = tl.max(predictions_row, axis=0)\n    exp_vals = tl.exp(predictions_row - max_val)\n    sum_exp = tl.sum(exp_vals, axis=0)\n    probs = exp_vals / sum_exp\n    \n    # Get target class\n    target_class = tl.load(targets_ptr + row_idx)\n    \n    # Compute negative log likelihood\n    target_prob = tl.load(probs + target_class)\n    loss = -tl.log(target_prob)\n    \n    # Store result\n    tl.store(output_ptr + row_idx, loss)\n\nclass ModelNew(torch.nn.Module):\n    def __init__(self):\n        super(ModelNew, self).__init__()\n\n    def forward(self, predictions, targets):\n        # Ensure inputs are float16\n        predictions = predictions.to(torch.float16)\n        targets = targets.to(torch.int32)\n        \n        # Get dimensions\n        batch_size = predictions.shape[0]\n        num_classes = predictions.shape[1]\n        \n        # Create output tensor\n        output = torch.empty(batch_size, dtype=torch.float32, device=predictions.device)\n        \n        # Launch kernel\n        grid = (batch_size, 1, 1)\n        block_size = 1024\n        \n        # Ensure block size is at least as large as num_classes or use min\n        actual_block_size = min(block_size, num_classes)\n        \n        cross_entropy_kernel[grid](\n            predictions,\n            targets,\n            output,\n            batch_size,\n            num_classes,\n            actual_block_size\n        )\n        \n        return output\n\n# Test function\ndef get_inputs():\n    batch_size = 32768\n    num_classes = 4096\n    return [torch.rand(batch_size, num_classes, dtype=torch.float16), \n            torch.randint(0, num_classes, (batch_size,), dtype=torch.int32)]\n\ndef get_init_inputs():\n    return []\n```",
+  "response_finish_reason": "stop",
+  "usage": {
+    "completion_tokens": 550,
+    "prompt_tokens": 312,
+    "total_tokens": 862,
+    "completion_tokens_details": null,
+    "prompt_tokens_details": null
+  },
+  "parsed_code": "import torch\nimport triton\nimport triton.language as tl\n\n@triton.jit\ndef cross_entropy_kernel(\n    predictions_ptr, targets_ptr, output_ptr,\n    N, C,\n    BLOCK_SIZE: tl.constexpr\n):\n    # Get the row index\n    row_idx = tl.program_id(0)\n    \n    # Each program processes one row\n    if row_idx >= N:\n        return\n    \n    # Load predictions for this row\n    predictions_row = tl.load(predictions_ptr + row_idx * C + tl.arange(0, BLOCK_SIZE))\n    \n    # Clamp predictions to avoid log(0)\n    predictions_row = tl.clamp(predictions_row, 1e-8, 1e8)\n    \n    # Compute softmax\n    max_val = tl.max(predictions_row, axis=0)\n    exp_vals = tl.exp(predictions_row - max_val)\n    sum_exp = tl.sum(exp_vals, axis=0)\n    probs = exp_vals / sum_exp\n    \n    # Get target class\n    target_class = tl.load(targets_ptr + row_idx)\n    \n    # Compute negative log likelihood\n    target_prob = tl.load(probs + target_class)\n    loss = -tl.log(target_prob)\n    \n    # Store result\n    tl.store(output_ptr + row_idx, loss)\n\nclass ModelNew(torch.nn.Module):\n    def __init__(self):\n        super(ModelNew, self).__init__()\n\n    def forward(self, predictions, targets):\n        # Ensure inputs are float16\n        predictions = predictions.to(torch.float16)\n        targets = targets.to(torch.int32)\n        \n        # Get dimensions\n        batch_size = predictions.shape[0]\n        num_classes = predictions.shape[1]\n        \n        # Create output tensor\n        output = torch.empty(batch_size, dtype=torch.float32, device=predictions.device)\n        \n        # Launch kernel\n        grid = (batch_size, 1, 1)\n        block_size = 1024\n        \n        # Ensure block size is at least as large as num_classes or use min\n        actual_block_size = min(block_size, num_classes)\n        \n        cross_entropy_kernel[grid](\n            predictions,\n            targets,\n            output,\n            batch_size,\n            num_classes,\n            actual_block_size\n        )\n        \n        return output\n\n# Test function\ndef get_inputs():\n    batch_size = 32768\n    num_classes = 4096\n    return [torch.rand(batch_size, num_classes, dtype=torch.float16), \n            torch.randint(0, num_classes, (batch_size,), dtype=torch.int32)]\n\ndef get_init_inputs():\n    return []\n",
+  "status": "generated"
+}

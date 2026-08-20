@@ -1,0 +1,15 @@
+{
+  "name": "qwen",
+  "hf_repo": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+  "hf_revision": "b2cff646eb4bb1d68355c01b18ae02e7cf42d120",
+  "vllm_version": "0.10.1",
+  "port": 8001,
+  "tensor_parallel_size": 1,
+  "gpu_model": "NVIDIA A100 80GB PCIe",
+  "cuda_visible_devices": "0",
+  "downgraded": true,
+  "downgrade_reason": "Qwen3-Coder-Next-FP8 segfaults on this GPU's hybrid Gated-DeltaNet kernel path (not OOM); 30B-A3B-Instruct confirmed as the experiment's Qwen model (PI decision 2026-08-19, CLAUDE.md)",
+  "max_model_len_override": "",
+  "base_url": "http://localhost:8001/v1",
+  "started_at": "2026-08-20T08:17:50+09:00"
+}

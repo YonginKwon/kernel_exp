@@ -1,0 +1,39 @@
+{
+  "task": "100_HingeLoss",
+  "task_family": "loss",
+  "language": "triton",
+  "condition": "0shot",
+  "sample_index": 2,
+  "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+  "base_url": "http://localhost:8001/v1",
+  "hf_revision": "b2cff646eb4bb1d68355c01b18ae02e7cf42d120",
+  "vllm_version": "0.10.1",
+  "tensor_parallel_size": 1,
+  "temperature": 0.8,
+  "max_tokens": 8192,
+  "seed": 5002,
+  "timestamp": "2026-08-20T08:43:18+0900",
+  "prompt_sha256": "7689d768e5774094e91a3b39425e102a167b425192a39b7fdb715ecb016726f8",
+  "prompt": "You are given a PyTorch reference implementation of a neural network operator.\nWrite a functionally equivalent GPU kernel in Triton.\n\nRequirements:\n- All tensor inputs and outputs are float16 (fp16). Accumulation precision is\n  your choice unless the reference dictates otherwise.\n- Target GPU: NVIDIA A100 (compute capability 8.0).\n- Your kernel must be a drop-in replacement: same input shapes, same output\n  shapes and dtype as the reference.\n- Output ONLY the complete Triton solution inside a single code block.\n  No explanation outside the code block.\n\nWrite a Triton kernel (triton.jit) with a Python wrapper. Provide the full\nPython file defining ModelNew that calls your Triton kernel.\n\nReference implementation:\n```python\nimport torch\nimport torch.nn as nn\n\nclass Model(nn.Module):\n    \"\"\"\n    A model that computes Hinge Loss for binary classification tasks.\n\n    Parameters:\n        None\n    \"\"\"\n    def __init__(self):\n        super(Model, self).__init__()\n\n    def forward(self, predictions, targets):\n        return torch.mean(torch.clamp(1 - predictions * targets, min=0))\n\nbatch_size = 32768\ninput_shape = (32768,)\ndim = 1\n\ndef get_inputs():\n    return [torch.rand(batch_size, *input_shape), torch.randint(0, 2, (batch_size,)).float() * 2 - 1]\n\ndef get_init_inputs():\n    return []\n```\n",
+  "env": {
+    "torch_version": "2.5.1+cu121",
+    "cuda_version": "12.1",
+    "gpu_name": "NVIDIA A100 80GB PCIe",
+    "compute_capability": [
+      8,
+      0
+    ],
+    "driver_version": "535.309.01\n535.309.01"
+  },
+  "response_raw": "```python\nimport torch\nimport triton\nimport triton.language as tl\n\n@triton.jit\ndef hinge_loss_kernel(\n    predictions_ptr, targets_ptr, output_ptr,\n    n_elements,\n    BLOCK_SIZE: tl.constexpr\n):\n    # Compute global thread index\n    pid = tl.program_id(0)\n    offset = pid * BLOCK_SIZE\n    predictions_block_ptr = tl.make_block_ptr(\n        base=predictions_ptr,\n        shape=(n_elements,),\n        strides=(1,),\n        offsets=(offset,),\n        block_shape=(BLOCK_SIZE,),\n        order=(0,)\n    )\n    targets_block_ptr = tl.make_block_ptr(\n        base=targets_ptr,\n        shape=(n_elements,),\n        strides=(1,),\n        offsets=(offset,),\n        block_shape=(BLOCK_SIZE,),\n        order=(0,)\n    )\n    \n    # Load data\n    predictions = tl.load(predictions_block_ptr, mask=(offset + tl.arange(0, BLOCK_SIZE) < n_elements))\n    targets = tl.load(targets_block_ptr, mask=(offset + tl.arange(0, BLOCK_SIZE) < n_elements))\n    \n    # Compute hinge loss: max(0, 1 - y * pred)\n    intermediate = 1.0 - predictions * targets\n    loss = tl.maximum(intermediate, 0.0)\n    \n    # Reduce to compute mean\n    sum_loss = tl.sum(loss, axis=0)\n    \n    # Store result\n    if pid == 0:\n        tl.store(output_ptr, sum_loss / n_elements)\n\nclass ModelNew(torch.nn.Module):\n    def __init__(self):\n        super(ModelNew, self).__init__()\n\n    def forward(self, predictions, targets):\n        # Ensure inputs are float16\n        predictions = predictions.to(torch.float16)\n        targets = targets.to(torch.float16)\n        \n        # Allocate output tensor\n        output = torch.empty(1, dtype=torch.float32, device=predictions.device)\n        \n        # Launch kernel\n        n_elements = predictions.numel()\n        BLOCK_SIZE = 1024\n        grid = (triton.cdiv(n_elements, BLOCK_SIZE),)\n        \n        hinge_loss_kernel[grid](\n            predictions,\n            targets,\n            output,\n            n_elements,\n            BLOCK_SIZE\n        )\n        \n        return output[0]\n\n# Test function\ndef get_inputs():\n    batch_size = 32768\n    input_shape = (32768,)\n    return [torch.rand(batch_size, *input_shape, dtype=torch.float16), \n            (torch.randint(0, 2, (batch_size,), dtype=torch.float16) * 2 - 1)]\n\ndef get_init_inputs():\n    return []\n```",
+  "response_finish_reason": "stop",
+  "usage": {
+    "completion_tokens": 559,
+    "prompt_tokens": 319,
+    "total_tokens": 878,
+    "completion_tokens_details": null,
+    "prompt_tokens_details": null
+  },
+  "parsed_code": "import torch\nimport triton\nimport triton.language as tl\n\n@triton.jit\ndef hinge_loss_kernel(\n    predictions_ptr, targets_ptr, output_ptr,\n    n_elements,\n    BLOCK_SIZE: tl.constexpr\n):\n    # Compute global thread index\n    pid = tl.program_id(0)\n    offset = pid * BLOCK_SIZE\n    predictions_block_ptr = tl.make_block_ptr(\n        base=predictions_ptr,\n        shape=(n_elements,),\n        strides=(1,),\n        offsets=(offset,),\n        block_shape=(BLOCK_SIZE,),\n        order=(0,)\n    )\n    targets_block_ptr = tl.make_block_ptr(\n        base=targets_ptr,\n        shape=(n_elements,),\n        strides=(1,),\n        offsets=(offset,),\n        block_shape=(BLOCK_SIZE,),\n        order=(0,)\n    )\n    \n    # Load data\n    predictions = tl.load(predictions_block_ptr, mask=(offset + tl.arange(0, BLOCK_SIZE) < n_elements))\n    targets = tl.load(targets_block_ptr, mask=(offset + tl.arange(0, BLOCK_SIZE) < n_elements))\n    \n    # Compute hinge loss: max(0, 1 - y * pred)\n    intermediate = 1.0 - predictions * targets\n    loss = tl.maximum(intermediate, 0.0)\n    \n    # Reduce to compute mean\n    sum_loss = tl.sum(loss, axis=0)\n    \n    # Store result\n    if pid == 0:\n        tl.store(output_ptr, sum_loss / n_elements)\n\nclass ModelNew(torch.nn.Module):\n    def __init__(self):\n        super(ModelNew, self).__init__()\n\n    def forward(self, predictions, targets):\n        # Ensure inputs are float16\n        predictions = predictions.to(torch.float16)\n        targets = targets.to(torch.float16)\n        \n        # Allocate output tensor\n        output = torch.empty(1, dtype=torch.float32, device=predictions.device)\n        \n        # Launch kernel\n        n_elements = predictions.numel()\n        BLOCK_SIZE = 1024\n        grid = (triton.cdiv(n_elements, BLOCK_SIZE),)\n        \n        hinge_loss_kernel[grid](\n            predictions,\n            targets,\n            output,\n            n_elements,\n            BLOCK_SIZE\n        )\n        \n        return output[0]\n\n# Test function\ndef get_inputs():\n    batch_size = 32768\n    input_shape = (32768,)\n    return [torch.rand(batch_size, *input_shape, dtype=torch.float16), \n            (torch.randint(0, 2, (batch_size,), dtype=torch.float16) * 2 - 1)]\n\ndef get_init_inputs():\n    return []\n",
+  "status": "generated"
+}

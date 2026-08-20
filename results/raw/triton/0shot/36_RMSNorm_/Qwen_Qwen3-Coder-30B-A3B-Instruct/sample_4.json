@@ -1,0 +1,39 @@
+{
+  "task": "36_RMSNorm_",
+  "task_family": "normalization",
+  "language": "triton",
+  "condition": "0shot",
+  "sample_index": 4,
+  "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+  "base_url": "http://localhost:8001/v1",
+  "hf_revision": "b2cff646eb4bb1d68355c01b18ae02e7cf42d120",
+  "vllm_version": "0.10.1",
+  "tensor_parallel_size": 1,
+  "temperature": 0.8,
+  "max_tokens": 8192,
+  "seed": 5004,
+  "timestamp": "2026-08-20T08:37:15+0900",
+  "prompt_sha256": "857b318f5413cf57d551e23433ae1cb7701843ec55836a561d66f4dfc83797c8",
+  "prompt": "You are given a PyTorch reference implementation of a neural network operator.\nWrite a functionally equivalent GPU kernel in Triton.\n\nRequirements:\n- All tensor inputs and outputs are float16 (fp16). Accumulation precision is\n  your choice unless the reference dictates otherwise.\n- Target GPU: NVIDIA A100 (compute capability 8.0).\n- Your kernel must be a drop-in replacement: same input shapes, same output\n  shapes and dtype as the reference.\n- Output ONLY the complete Triton solution inside a single code block.\n  No explanation outside the code block.\n\nWrite a Triton kernel (triton.jit) with a Python wrapper. Provide the full\nPython file defining ModelNew that calls your Triton kernel.\n\nReference implementation:\n```python\nimport torch\nimport torch.nn as nn\n\nclass Model(nn.Module):\n    \"\"\"\n    Simple model that performs RMS Normalization.\n    \"\"\"\n    def __init__(self, num_features: int, eps: float = 1e-5):\n        \"\"\"\n        Initializes the RMSNorm layer.\n\n        Args:\n            num_features (int): Number of features in the input tensor.\n            eps (float, optional): A small value added to the denominator to avoid division by zero. Defaults to 1e-5.\n        \"\"\"\n        super(Model, self).__init__()\n        self.num_features = num_features\n        self.eps = eps\n\n    def forward(self, x: torch.Tensor) -> torch.Tensor:\n        \"\"\"\n        Applies RMS Normalization to the input tensor.\n\n        Args:\n            x (torch.Tensor): Input tensor of shape (batch_size, num_features, *).\n\n        Returns:\n            torch.Tensor: Output tensor with RMS Normalization applied, same shape as input.\n        \"\"\"\n        # Calculate the RMS along the feature dimension\n        rms = torch.sqrt(torch.mean(x ** 2, dim=1, keepdim=True) + self.eps)\n\n        # Normalize the input by dividing by the RMS\n        return x / rms\n\nbatch_size = 112\nfeatures = 64\ndim1 = 512\ndim2 = 512\n\ndef get_inputs():\n    x = torch.rand(batch_size, features, dim1, dim2)\n    return [x]\n\ndef get_init_inputs():\n    return [features]\n```\n",
+  "env": {
+    "torch_version": "2.5.1+cu121",
+    "cuda_version": "12.1",
+    "gpu_name": "NVIDIA A100 80GB PCIe",
+    "compute_capability": [
+      8,
+      0
+    ],
+    "driver_version": "535.309.01\n535.309.01"
+  },
+  "response_raw": "```python\nimport torch\nimport triton\nimport triton.language as tl\n\n@triton.jit\ndef rms_norm_kernel(\n    x_ptr, \n    out_ptr, \n    rms_ptr,\n    N, \n    eps,\n    BLOCK_SIZE: tl.constexpr\n):\n    # Get the row index\n    row_idx = tl.program_id(0)\n    \n    # Calculate the start offset for this row\n    x_row_start = row_idx * N\n    out_row_start = row_idx * N\n    \n    # Compute sum of squares for this row\n    sum_sq = 0.0\n    for i in range(0, N, BLOCK_SIZE):\n        idx = i + tl.arange(0, BLOCK_SIZE)\n        mask = idx < N\n        x_vals = tl.load(x_ptr + x_row_start + idx, mask=mask, other=0.0)\n        sum_sq += tl.sum(x_vals * x_vals)\n    \n    # Compute RMS\n    rms = tl.sqrt(sum_sq / N + eps)\n    \n    # Store RMS for potential reuse\n    tl.store(rms_ptr + row_idx, rms)\n    \n    # Normalize and store output\n    for i in range(0, N, BLOCK_SIZE):\n        idx = i + tl.arange(0, BLOCK_SIZE)\n        mask = idx < N\n        x_vals = tl.load(x_ptr + x_row_start + idx, mask=mask, other=0.0)\n        out_vals = x_vals / rms\n        tl.store(out_ptr + out_row_start + idx, out_vals, mask=mask)\n\nclass ModelNew(torch.nn.Module):\n    def __init__(self, num_features: int, eps: float = 1e-5):\n        super(ModelNew, self).__init__()\n        self.num_features = num_features\n        self.eps = eps\n\n    def forward(self, x: torch.Tensor) -> torch.Tensor:\n        # Ensure input is float16\n        if x.dtype != torch.float16:\n            x = x.to(torch.float16)\n            \n        batch_size = x.shape[0]\n        features = self.num_features\n        total_elements = batch_size * features\n        \n        # Allocate output tensor\n        output = torch.empty_like(x)\n        \n        # Allocate RMS tensor\n        rms = torch.empty(batch_size, dtype=torch.float32, device=x.device)\n        \n        # Launch kernel\n        grid = (batch_size,)\n        BLOCK_SIZE = 1024\n        \n        rms_norm_kernel[grid](\n            x, \n            output, \n            rms,\n            features,\n            self.eps,\n            BLOCK_SIZE\n        )\n        \n        return output\n\n# Test function\nbatch_size = 112\nfeatures = 64\ndim1 = 512\ndim2 = 512\n\ndef get_inputs():\n    x = torch.rand(batch_size, features, dim1, dim2, dtype=torch.float16)\n    return [x]\n\ndef get_init_inputs():\n    return [features]\n```",
+  "response_finish_reason": "stop",
+  "usage": {
+    "completion_tokens": 624,
+    "prompt_tokens": 482,
+    "total_tokens": 1106,
+    "completion_tokens_details": null,
+    "prompt_tokens_details": null
+  },
+  "parsed_code": "import torch\nimport triton\nimport triton.language as tl\n\n@triton.jit\ndef rms_norm_kernel(\n    x_ptr, \n    out_ptr, \n    rms_ptr,\n    N, \n    eps,\n    BLOCK_SIZE: tl.constexpr\n):\n    # Get the row index\n    row_idx = tl.program_id(0)\n    \n    # Calculate the start offset for this row\n    x_row_start = row_idx * N\n    out_row_start = row_idx * N\n    \n    # Compute sum of squares for this row\n    sum_sq = 0.0\n    for i in range(0, N, BLOCK_SIZE):\n        idx = i + tl.arange(0, BLOCK_SIZE)\n        mask = idx < N\n        x_vals = tl.load(x_ptr + x_row_start + idx, mask=mask, other=0.0)\n        sum_sq += tl.sum(x_vals * x_vals)\n    \n    # Compute RMS\n    rms = tl.sqrt(sum_sq / N + eps)\n    \n    # Store RMS for potential reuse\n    tl.store(rms_ptr + row_idx, rms)\n    \n    # Normalize and store output\n    for i in range(0, N, BLOCK_SIZE):\n        idx = i + tl.arange(0, BLOCK_SIZE)\n        mask = idx < N\n        x_vals = tl.load(x_ptr + x_row_start + idx, mask=mask, other=0.0)\n        out_vals = x_vals / rms\n        tl.store(out_ptr + out_row_start + idx, out_vals, mask=mask)\n\nclass ModelNew(torch.nn.Module):\n    def __init__(self, num_features: int, eps: float = 1e-5):\n        super(ModelNew, self).__init__()\n        self.num_features = num_features\n        self.eps = eps\n\n    def forward(self, x: torch.Tensor) -> torch.Tensor:\n        # Ensure input is float16\n        if x.dtype != torch.float16:\n            x = x.to(torch.float16)\n            \n        batch_size = x.shape[0]\n        features = self.num_features\n        total_elements = batch_size * features\n        \n        # Allocate output tensor\n        output = torch.empty_like(x)\n        \n        # Allocate RMS tensor\n        rms = torch.empty(batch_size, dtype=torch.float32, device=x.device)\n        \n        # Launch kernel\n        grid = (batch_size,)\n        BLOCK_SIZE = 1024\n        \n        rms_norm_kernel[grid](\n            x, \n            output, \n            rms,\n            features,\n            self.eps,\n            BLOCK_SIZE\n        )\n        \n        return output\n\n# Test function\nbatch_size = 112\nfeatures = 64\ndim1 = 512\ndim2 = 512\n\ndef get_inputs():\n    x = torch.rand(batch_size, features, dim1, dim2, dtype=torch.float16)\n    return [x]\n\ndef get_init_inputs():\n    return [features]\n",
+  "status": "generated"
+}

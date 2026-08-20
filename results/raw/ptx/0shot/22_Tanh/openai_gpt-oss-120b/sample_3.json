@@ -1,0 +1,39 @@
+{
+  "task": "22_Tanh",
+  "task_family": "elementwise_activation",
+  "language": "ptx",
+  "condition": "0shot",
+  "sample_index": 3,
+  "model": "openai/gpt-oss-120b",
+  "base_url": "http://localhost:8000/v1",
+  "hf_revision": "b5c939de8f754692c1647ca79fbf85e8c1e70f8a",
+  "vllm_version": "0.10.1",
+  "tensor_parallel_size": 1,
+  "temperature": 0.8,
+  "max_tokens": 8192,
+  "seed": 3003,
+  "timestamp": "2026-08-20T07:41:52+0900",
+  "prompt_sha256": "a4a55df3558c50c8684753597484fa0dfa8462608deb1eec77e868ecdedab526",
+  "prompt": "You are given a PyTorch reference implementation of a neural network operator.\nWrite a functionally equivalent GPU kernel in PTX.\n\nRequirements:\n- All tensor inputs and outputs are float16 (fp16). Accumulation precision is\n  your choice unless the reference dictates otherwise.\n- Target GPU: NVIDIA A100 (compute capability 8.0).\n- Your kernel must be a drop-in replacement: same input shapes, same output\n  shapes and dtype as the reference.\n- Output ONLY the complete PTX solution inside a single code block.\n  No explanation outside the code block.\n\nWrite the complete kernel in raw PTX ISA (.target sm_80). Provide:\n(1) the PTX module as a Python string constant, and\n(2) a ModelNew class that loads it via the provided ptx_harness API:\n    module = ptx_load(PTX_SOURCE); ptx_launch(module, \"kernel_name\", grid, block, args).\nThe harness handles module loading; you write only the PTX and launch parameters.\n\nReference implementation:\n```python\nimport torch\nimport torch.nn as nn\n\nclass Model(nn.Module):\n    \"\"\"\n    Simple model that performs a Tanh activation.\n    \"\"\"\n    def __init__(self):\n        super(Model, self).__init__()\n    \n    def forward(self, x: torch.Tensor) -> torch.Tensor:\n        \"\"\"\n        Applies Tanh activation to the input tensor.\n\n        Args:\n            x (torch.Tensor): Input tensor of any shape.\n\n        Returns:\n            torch.Tensor: Output tensor with Tanh applied, same shape as input.\n        \"\"\"\n        return torch.tanh(x)\n\nbatch_size = 4096\ndim = 393216\n\ndef get_inputs():\n    x = torch.rand(batch_size, dim)\n    return [x]\n\ndef get_init_inputs():\n    return []  # No special initialization inputs needed\n```\n",
+  "env": {
+    "torch_version": "2.5.1+cu121",
+    "cuda_version": "12.1",
+    "gpu_name": "NVIDIA A100 80GB PCIe",
+    "compute_capability": [
+      8,
+      0
+    ],
+    "driver_version": "535.309.01\n535.309.01"
+  },
+  "response_raw": "```python\nPTX_SOURCE = r'''\n.version 7.2\n.target sm_80\n.address_size 64\n\n.visible .entry tanh_kernel(\n    .param .u64 out_ptr,\n    .param .u64 in_ptr,\n    .param .u32 N\n)\n{\n    // Registers\n    .reg .pred   %p1;\n    .reg .b32    %tid_x, %blk_dim_x, %grid_dim_x, %idx, %stride, %N;\n    .reg .b64    %in_ptr, %out_ptr, %addr_in, %addr_out;\n    .reg .b16    %h;\n    .reg .f32    %f, %tanh_f;\n\n    // Load kernel parameters\n    ld.param.u64    %in_ptr,   [in_ptr];\n    ld.param.u64    %out_ptr,  [out_ptr];\n    ld.param.u32    %N,        [N];\n\n    // Thread/block identifiers\n    mov.u32         %tid_x,    %tid.x;\n    mov.u32         %blk_dim_x,%ntid.x;\n    mov.u32         %grid_dim_x,%ctaid.x;\n\n    // Compute global linear index: idx = blockIdx.x * blockDim.x + threadIdx.x\n    mad.lo.u32      %idx, %grid_dim_x, %blk_dim_x, %tid_x;\n\n    // stride = gridDim.x * blockDim.x\n    mul.lo.u32      %stride, %grid_dim_x, %blk_dim_x;\n\n    // Loop over elements\n    @! ( %idx < %N ) bra DONE;\n\nLOOP:\n    // Compute byte address = ptr + idx * sizeof(half) (2 bytes)\n    mul.wide.u32    %addr_in, %idx, 2;\n    add.u64         %addr_in, %in_ptr, %addr_in;\n\n    // Load half\n    ld.global.nc.f16 %h, [%addr_in];\n\n    // Convert to float, compute tanh (approx), convert back\n    cvt.f32.f16     %f, %h;\n    tanh.approx.f32 %tanh_f, %f;\n    cvt.f16.f32     %h, %tanh_f;\n\n    // Store result\n    mul.wide.u32    %addr_out, %idx, 2;\n    add.u64         %addr_out, %out_ptr, %addr_out;\n    st.global.f16   [%addr_out], %h;\n\n    // idx += stride\n    add.u32         %idx, %idx, %stride;\n    setp.lt.u32     %p1, %idx, %N;\n    @%p1 bra LOOP;\n\nDONE:\n    ret;\n}\n'''\n\nclass ModelNew:\n    def __init__(self):\n        # Load the PTX module using the harness API\n        self.module = ptx_load(PTX_SOURCE)\n\n    def forward(self, x: torch.Tensor) -> torch.Tensor:\n        \"\"\"Apply element\u2011wise tanh on a half\u2011precision tensor using the PTX kernel.\"\"\"\n        assert x.is_cuda and x.dtype == torch.float16, \"Input must be CUDA half tensor\"\n        out = torch.empty_like(x)\n\n        N = x.numel()\n        threads_per_block = 256\n        blocks = ( (N + threads_per_block - 1) // threads_per_block, )\n\n        # Launch the kernel\n        ptx_launch(\n            self.module,\n            \"tanh_kernel\",\n            grid=blocks,\n            block=(threads_per_block,),\n            args=[out.data_ptr(), x.data_ptr(), N]\n        )\n        return out\n```",
+  "response_finish_reason": "stop",
+  "usage": {
+    "completion_tokens": 2103,
+    "prompt_tokens": 450,
+    "total_tokens": 2553,
+    "completion_tokens_details": null,
+    "prompt_tokens_details": null
+  },
+  "parsed_code": "PTX_SOURCE = r'''\n.version 7.2\n.target sm_80\n.address_size 64\n\n.visible .entry tanh_kernel(\n    .param .u64 out_ptr,\n    .param .u64 in_ptr,\n    .param .u32 N\n)\n{\n    // Registers\n    .reg .pred   %p1;\n    .reg .b32    %tid_x, %blk_dim_x, %grid_dim_x, %idx, %stride, %N;\n    .reg .b64    %in_ptr, %out_ptr, %addr_in, %addr_out;\n    .reg .b16    %h;\n    .reg .f32    %f, %tanh_f;\n\n    // Load kernel parameters\n    ld.param.u64    %in_ptr,   [in_ptr];\n    ld.param.u64    %out_ptr,  [out_ptr];\n    ld.param.u32    %N,        [N];\n\n    // Thread/block identifiers\n    mov.u32         %tid_x,    %tid.x;\n    mov.u32         %blk_dim_x,%ntid.x;\n    mov.u32         %grid_dim_x,%ctaid.x;\n\n    // Compute global linear index: idx = blockIdx.x * blockDim.x + threadIdx.x\n    mad.lo.u32      %idx, %grid_dim_x, %blk_dim_x, %tid_x;\n\n    // stride = gridDim.x * blockDim.x\n    mul.lo.u32      %stride, %grid_dim_x, %blk_dim_x;\n\n    // Loop over elements\n    @! ( %idx < %N ) bra DONE;\n\nLOOP:\n    // Compute byte address = ptr + idx * sizeof(half) (2 bytes)\n    mul.wide.u32    %addr_in, %idx, 2;\n    add.u64         %addr_in, %in_ptr, %addr_in;\n\n    // Load half\n    ld.global.nc.f16 %h, [%addr_in];\n\n    // Convert to float, compute tanh (approx), convert back\n    cvt.f32.f16     %f, %h;\n    tanh.approx.f32 %tanh_f, %f;\n    cvt.f16.f32     %h, %tanh_f;\n\n    // Store result\n    mul.wide.u32    %addr_out, %idx, 2;\n    add.u64         %addr_out, %out_ptr, %addr_out;\n    st.global.f16   [%addr_out], %h;\n\n    // idx += stride\n    add.u32         %idx, %idx, %stride;\n    setp.lt.u32     %p1, %idx, %N;\n    @%p1 bra LOOP;\n\nDONE:\n    ret;\n}\n'''\n\nclass ModelNew:\n    def __init__(self):\n        # Load the PTX module using the harness API\n        self.module = ptx_load(PTX_SOURCE)\n\n    def forward(self, x: torch.Tensor) -> torch.Tensor:\n        \"\"\"Apply element\u2011wise tanh on a half\u2011precision tensor using the PTX kernel.\"\"\"\n        assert x.is_cuda and x.dtype == torch.float16, \"Input must be CUDA half tensor\"\n        out = torch.empty_like(x)\n\n        N = x.numel()\n        threads_per_block = 256\n        blocks = ( (N + threads_per_block - 1) // threads_per_block, )\n\n        # Launch the kernel\n        ptx_launch(\n            self.module,\n            \"tanh_kernel\",\n            grid=blocks,\n            block=(threads_per_block,),\n            args=[out.data_ptr(), x.data_ptr(), N]\n        )\n        return out\n",
+  "status": "generated"
+}

@@ -1,0 +1,39 @@
+{
+  "task": "21_Sigmoid",
+  "task_family": "elementwise_activation",
+  "language": "cuda",
+  "condition": "0shot",
+  "sample_index": 1,
+  "model": "openai/gpt-oss-120b",
+  "base_url": "http://localhost:8000/v1",
+  "hf_revision": "b5c939de8f754692c1647ca79fbf85e8c1e70f8a",
+  "vllm_version": "0.10.1",
+  "tensor_parallel_size": 1,
+  "temperature": 0.8,
+  "max_tokens": 8192,
+  "seed": 1001,
+  "timestamp": "2026-08-20T06:52:10+0900",
+  "prompt_sha256": "70f4d2a50ed0a90d14468035e5afa2137cbd890ae91ffb3d33f32f0889f691e1",
+  "prompt": "You are given a PyTorch reference implementation of a neural network operator.\nWrite a functionally equivalent GPU kernel in CUDA.\n\nRequirements:\n- All tensor inputs and outputs are float16 (fp16). Accumulation precision is\n  your choice unless the reference dictates otherwise.\n- Target GPU: NVIDIA A100 (compute capability 8.0).\n- Your kernel must be a drop-in replacement: same input shapes, same output\n  shapes and dtype as the reference.\n- Output ONLY the complete CUDA solution inside a single code block.\n  No explanation outside the code block.\n\nWrite CUDA C++ using inline PyTorch extension conventions\n(torch.utils.cpp_extension.load_inline). Provide the full Python file\ndefining ModelNew that compiles and launches your CUDA kernel.\nDo not pass a -std= (C++ standard) flag in extra_cflags or\nextra_cuda_cflags; the harness supplies the required C++ standard\nuniformly and overrides any you provide.\n\nReference implementation:\n```python\nimport torch\nimport torch.nn as nn\n\nclass Model(nn.Module):\n    \"\"\"\n    Simple model that performs a Sigmoid activation.\n    \"\"\"\n    def __init__(self):\n        super(Model, self).__init__()\n    \n    def forward(self, x: torch.Tensor) -> torch.Tensor:\n        \"\"\"\n        Applies Sigmoid activation to the input tensor.\n\n        Args:\n            x (torch.Tensor): Input tensor of any shape.\n\n        Returns:\n            torch.Tensor: Output tensor with Sigmoid applied, same shape as input.\n        \"\"\"\n        return torch.sigmoid(x)\n\nbatch_size = 4096\ndim = 393216\n\ndef get_inputs():\n    x = torch.rand(batch_size, dim)\n    return [x]\n\ndef get_init_inputs():\n    return []  # No special initialization inputs needed\n```\n",
+  "env": {
+    "torch_version": "2.5.1+cu121",
+    "cuda_version": "12.1",
+    "gpu_name": "NVIDIA A100 80GB PCIe",
+    "compute_capability": [
+      8,
+      0
+    ],
+    "driver_version": "535.309.01\n535.309.01"
+  },
+  "response_raw": "```python\nimport torch\nimport torch.nn as nn\nfrom torch.utils.cpp_extension import load_inline\n\n# CUDA source implementing element\u2011wise sigmoid for fp16 tensors\ncuda_src = r'''\n#include <torch/extension.h>\n#include <cuda.h>\n#include <cuda_runtime.h>\n#include <cuda_fp16.h>\n\n__global__ void sigmoid_kernel_half(const __half* __restrict__ input,\n                                    __half* __restrict__ output,\n                                    int64_t N) {\n    int idx = blockIdx.x * blockDim.x + threadIdx.x;\n    if (idx < N) {\n        float x = __half2float(input[idx]);          // promote to FP32\n        float y = 1.0f / (1.0f + expf(-x));          // sigmoid in FP32\n        output[idx] = __float2half(y);               // back to FP16\n    }\n}\n\n// Python entry point\ntorch::Tensor sigmoid_forward(torch::Tensor input) {\n    TORCH_CHECK(input.is_cuda(), \"input must be a CUDA tensor\");\n    TORCH_CHECK(input.scalar_type() == torch::kHalf, \"input must be fp16\");\n\n    auto output = torch::empty_like(input);\n    int64_t N = input.numel();\n\n    const int threads = 256;\n    const int blocks = (N + threads - 1) / threads;\n\n    // launch on the current stream\n    sigmoid_kernel_half<<<blocks, threads, 0,\n        at::cuda::getCurrentCUDAStream()>>>(\n            reinterpret_cast<const __half*>(input.data_ptr<torch::Half>()),\n            reinterpret_cast<__half*>(output.data_ptr<torch::Half>()),\n            N);\n\n    // propagate potential launch errors\n    cudaError_t err = cudaGetLastError();\n    if (err != cudaSuccess) {\n        AT_ERROR(\"CUDA error in sigmoid_forward: \", cudaGetErrorString(err));\n    }\n\n    return output;\n}\n\n// Bindings\nPYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {\n    m.def(\"sigmoid_forward\", &sigmoid_forward, \"Sigmoid forward (fp16)\");\n}\n'''\n\n# Compile the inline extension\nsigmoid_cuda = load_inline(\n    name='sigmoid_cuda',\n    cpp_sources='',\n    cuda_sources=cuda_src,\n    functions=['sigmoid_forward'],\n    verbose=False,\n)\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    Drop\u2011in replacement for the reference Model that uses a custom\n    fp16 sigmoid CUDA kernel.\n    \"\"\"\n    def __init__(self):\n        super().__init__()\n\n    def forward(self, x: torch.Tensor) -> torch.Tensor:\n        # Ensure tensor is on CUDA and in fp16\n        if not x.is_cuda:\n            x = x.to('cuda')\n        if x.dtype != torch.float16:\n            x = x.half()\n        return sigmoid_cuda.sigmoid_forward(x)\n```",
+  "response_finish_reason": "stop",
+  "usage": {
+    "completion_tokens": 1643,
+    "prompt_tokens": 433,
+    "total_tokens": 2076,
+    "completion_tokens_details": null,
+    "prompt_tokens_details": null
+  },
+  "parsed_code": "import torch\nimport torch.nn as nn\nfrom torch.utils.cpp_extension import load_inline\n\n# CUDA source implementing element\u2011wise sigmoid for fp16 tensors\ncuda_src = r'''\n#include <torch/extension.h>\n#include <cuda.h>\n#include <cuda_runtime.h>\n#include <cuda_fp16.h>\n\n__global__ void sigmoid_kernel_half(const __half* __restrict__ input,\n                                    __half* __restrict__ output,\n                                    int64_t N) {\n    int idx = blockIdx.x * blockDim.x + threadIdx.x;\n    if (idx < N) {\n        float x = __half2float(input[idx]);          // promote to FP32\n        float y = 1.0f / (1.0f + expf(-x));          // sigmoid in FP32\n        output[idx] = __float2half(y);               // back to FP16\n    }\n}\n\n// Python entry point\ntorch::Tensor sigmoid_forward(torch::Tensor input) {\n    TORCH_CHECK(input.is_cuda(), \"input must be a CUDA tensor\");\n    TORCH_CHECK(input.scalar_type() == torch::kHalf, \"input must be fp16\");\n\n    auto output = torch::empty_like(input);\n    int64_t N = input.numel();\n\n    const int threads = 256;\n    const int blocks = (N + threads - 1) / threads;\n\n    // launch on the current stream\n    sigmoid_kernel_half<<<blocks, threads, 0,\n        at::cuda::getCurrentCUDAStream()>>>(\n            reinterpret_cast<const __half*>(input.data_ptr<torch::Half>()),\n            reinterpret_cast<__half*>(output.data_ptr<torch::Half>()),\n            N);\n\n    // propagate potential launch errors\n    cudaError_t err = cudaGetLastError();\n    if (err != cudaSuccess) {\n        AT_ERROR(\"CUDA error in sigmoid_forward: \", cudaGetErrorString(err));\n    }\n\n    return output;\n}\n\n// Bindings\nPYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {\n    m.def(\"sigmoid_forward\", &sigmoid_forward, \"Sigmoid forward (fp16)\");\n}\n'''\n\n# Compile the inline extension\nsigmoid_cuda = load_inline(\n    name='sigmoid_cuda',\n    cpp_sources='',\n    cuda_sources=cuda_src,\n    functions=['sigmoid_forward'],\n    verbose=False,\n)\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    Drop\u2011in replacement for the reference Model that uses a custom\n    fp16 sigmoid CUDA kernel.\n    \"\"\"\n    def __init__(self):\n        super().__init__()\n\n    def forward(self, x: torch.Tensor) -> torch.Tensor:\n        # Ensure tensor is on CUDA and in fp16\n        if not x.is_cuda:\n            x = x.to('cuda')\n        if x.dtype != torch.float16:\n            x = x.half()\n        return sigmoid_cuda.sigmoid_forward(x)\n",
+  "status": "generated"
+}

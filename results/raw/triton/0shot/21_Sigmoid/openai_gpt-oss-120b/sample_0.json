@@ -1,0 +1,39 @@
+{
+  "task": "21_Sigmoid",
+  "task_family": "elementwise_activation",
+  "language": "triton",
+  "condition": "0shot",
+  "sample_index": 0,
+  "model": "openai/gpt-oss-120b",
+  "base_url": "http://localhost:8000/v1",
+  "hf_revision": "b5c939de8f754692c1647ca79fbf85e8c1e70f8a",
+  "vllm_version": "0.10.1",
+  "tensor_parallel_size": 1,
+  "temperature": 0.8,
+  "max_tokens": 8192,
+  "seed": 2000,
+  "timestamp": "2026-08-20T07:14:47+0900",
+  "prompt_sha256": "4334f5f7da43d57aecb303151cb3c5e97eb38bdd32745ba9d8a32f502af4ba73",
+  "prompt": "You are given a PyTorch reference implementation of a neural network operator.\nWrite a functionally equivalent GPU kernel in Triton.\n\nRequirements:\n- All tensor inputs and outputs are float16 (fp16). Accumulation precision is\n  your choice unless the reference dictates otherwise.\n- Target GPU: NVIDIA A100 (compute capability 8.0).\n- Your kernel must be a drop-in replacement: same input shapes, same output\n  shapes and dtype as the reference.\n- Output ONLY the complete Triton solution inside a single code block.\n  No explanation outside the code block.\n\nWrite a Triton kernel (triton.jit) with a Python wrapper. Provide the full\nPython file defining ModelNew that calls your Triton kernel.\n\nReference implementation:\n```python\nimport torch\nimport torch.nn as nn\n\nclass Model(nn.Module):\n    \"\"\"\n    Simple model that performs a Sigmoid activation.\n    \"\"\"\n    def __init__(self):\n        super(Model, self).__init__()\n    \n    def forward(self, x: torch.Tensor) -> torch.Tensor:\n        \"\"\"\n        Applies Sigmoid activation to the input tensor.\n\n        Args:\n            x (torch.Tensor): Input tensor of any shape.\n\n        Returns:\n            torch.Tensor: Output tensor with Sigmoid applied, same shape as input.\n        \"\"\"\n        return torch.sigmoid(x)\n\nbatch_size = 4096\ndim = 393216\n\ndef get_inputs():\n    x = torch.rand(batch_size, dim)\n    return [x]\n\ndef get_init_inputs():\n    return []  # No special initialization inputs needed\n```\n",
+  "env": {
+    "torch_version": "2.5.1+cu121",
+    "cuda_version": "12.1",
+    "gpu_name": "NVIDIA A100 80GB PCIe",
+    "compute_capability": [
+      8,
+      0
+    ],
+    "driver_version": "535.309.01\n535.309.01"
+  },
+  "response_raw": "```python\nimport torch\nimport torch.nn as nn\nimport triton\nimport triton.language as tl\n\n# --------------------------------------------------------------\n# Triton kernel implementing element\u2011wise sigmoid for fp16 tensors\n# --------------------------------------------------------------\n@triton.jit\ndef sigmoid_kernel(\n    in_ptr,                # const * fp16\n    out_ptr,               # * fp16\n    n_elements,            # total number of elements\n    BLOCK_SIZE: tl.constexpr\n):\n    pid = tl.program_id(0)\n    start = pid * BLOCK_SIZE\n    offsets = start + tl.arange(0, BLOCK_SIZE)\n    mask = offsets < n_elements\n\n    # Load fp16, promote to fp32 for stable math\n    x_fp16 = tl.load(in_ptr + offsets, mask=mask, other=0.0)\n    x_fp32 = x_fp16.to(tl.float32)\n\n    # sigmoid = 1 / (1 + exp(-x))\n    y_fp32 = 1.0 / (1.0 + tl.exp(-x_fp32))\n\n    # Down\u2011cast to fp16 before storing\n    y_fp16 = y_fp32.to(tl.float16)\n    tl.store(out_ptr + offsets, y_fp16, mask=mask)\n\n\ndef sigmoid_triton(x: torch.Tensor) -> torch.Tensor:\n    \"\"\"\n    Apply sigmoid to a fp16 CUDA tensor using the Triton kernel.\n    \"\"\"\n    if not x.is_cuda:\n        x = x.to('cuda')\n    x = x.to(torch.float16)\n\n    out = torch.empty_like(x, dtype=torch.float16)\n\n    n_elements = x.numel()\n    BLOCK_SIZE = 1024  # fits well on A100 SMs\n    grid = lambda meta: (triton.cdiv(n_elements, meta[\"BLOCK_SIZE\"]),)\n\n    sigmoid_kernel[grid](\n        x,\n        out,\n        n_elements,\n        BLOCK_SIZE=BLOCK_SIZE,\n    )\n    return out\n\n\n# --------------------------------------------------------------\n# Drop\u2011in replacement model\n# --------------------------------------------------------------\nclass ModelNew(nn.Module):\n    \"\"\"\n    Mirrors the reference Model but uses the Triton\u2011based sigmoid.\n    \"\"\"\n    def __init__(self):\n        super().__init__()\n\n    def forward(self, x: torch.Tensor) -> torch.Tensor:\n        return sigmoid_triton(x)\n\n\n# --------------------------------------------------------------\n# Helper functions matching the reference API\n# --------------------------------------------------------------\ndef get_inputs():\n    batch_size = 4096\n    dim = 393216\n    x = torch.rand(batch_size, dim, device=\"cuda\", dtype=torch.float16)\n    return [x]\n\ndef get_init_inputs():\n    return []  # No special initialization inputs needed\n```",
+  "response_finish_reason": "stop",
+  "usage": {
+    "completion_tokens": 926,
+    "prompt_tokens": 389,
+    "total_tokens": 1315,
+    "completion_tokens_details": null,
+    "prompt_tokens_details": null
+  },
+  "parsed_code": "import torch\nimport torch.nn as nn\nimport triton\nimport triton.language as tl\n\n# --------------------------------------------------------------\n# Triton kernel implementing element\u2011wise sigmoid for fp16 tensors\n# --------------------------------------------------------------\n@triton.jit\ndef sigmoid_kernel(\n    in_ptr,                # const * fp16\n    out_ptr,               # * fp16\n    n_elements,            # total number of elements\n    BLOCK_SIZE: tl.constexpr\n):\n    pid = tl.program_id(0)\n    start = pid * BLOCK_SIZE\n    offsets = start + tl.arange(0, BLOCK_SIZE)\n    mask = offsets < n_elements\n\n    # Load fp16, promote to fp32 for stable math\n    x_fp16 = tl.load(in_ptr + offsets, mask=mask, other=0.0)\n    x_fp32 = x_fp16.to(tl.float32)\n\n    # sigmoid = 1 / (1 + exp(-x))\n    y_fp32 = 1.0 / (1.0 + tl.exp(-x_fp32))\n\n    # Down\u2011cast to fp16 before storing\n    y_fp16 = y_fp32.to(tl.float16)\n    tl.store(out_ptr + offsets, y_fp16, mask=mask)\n\n\ndef sigmoid_triton(x: torch.Tensor) -> torch.Tensor:\n    \"\"\"\n    Apply sigmoid to a fp16 CUDA tensor using the Triton kernel.\n    \"\"\"\n    if not x.is_cuda:\n        x = x.to('cuda')\n    x = x.to(torch.float16)\n\n    out = torch.empty_like(x, dtype=torch.float16)\n\n    n_elements = x.numel()\n    BLOCK_SIZE = 1024  # fits well on A100 SMs\n    grid = lambda meta: (triton.cdiv(n_elements, meta[\"BLOCK_SIZE\"]),)\n\n    sigmoid_kernel[grid](\n        x,\n        out,\n        n_elements,\n        BLOCK_SIZE=BLOCK_SIZE,\n    )\n    return out\n\n\n# --------------------------------------------------------------\n# Drop\u2011in replacement model\n# --------------------------------------------------------------\nclass ModelNew(nn.Module):\n    \"\"\"\n    Mirrors the reference Model but uses the Triton\u2011based sigmoid.\n    \"\"\"\n    def __init__(self):\n        super().__init__()\n\n    def forward(self, x: torch.Tensor) -> torch.Tensor:\n        return sigmoid_triton(x)\n\n\n# --------------------------------------------------------------\n# Helper functions matching the reference API\n# --------------------------------------------------------------\ndef get_inputs():\n    batch_size = 4096\n    dim = 393216\n    x = torch.rand(batch_size, dim, device=\"cuda\", dtype=torch.float16)\n    return [x]\n\ndef get_init_inputs():\n    return []  # No special initialization inputs needed\n",
+  "status": "generated"
+}

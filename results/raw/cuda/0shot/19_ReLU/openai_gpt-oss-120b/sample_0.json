@@ -1,0 +1,39 @@
+{
+  "task": "19_ReLU",
+  "task_family": "elementwise_activation",
+  "language": "cuda",
+  "condition": "0shot",
+  "sample_index": 0,
+  "model": "openai/gpt-oss-120b",
+  "base_url": "http://localhost:8000/v1",
+  "hf_revision": "b5c939de8f754692c1647ca79fbf85e8c1e70f8a",
+  "vllm_version": "0.10.1",
+  "tensor_parallel_size": 1,
+  "temperature": 0.8,
+  "max_tokens": 8192,
+  "seed": 1000,
+  "timestamp": "2026-08-20T06:51:25+0900",
+  "prompt_sha256": "3f3390117e6b7f6bbe435bff629bc325184ee65e2b9d8bd89b96eadba95ce055",
+  "prompt": "You are given a PyTorch reference implementation of a neural network operator.\nWrite a functionally equivalent GPU kernel in CUDA.\n\nRequirements:\n- All tensor inputs and outputs are float16 (fp16). Accumulation precision is\n  your choice unless the reference dictates otherwise.\n- Target GPU: NVIDIA A100 (compute capability 8.0).\n- Your kernel must be a drop-in replacement: same input shapes, same output\n  shapes and dtype as the reference.\n- Output ONLY the complete CUDA solution inside a single code block.\n  No explanation outside the code block.\n\nWrite CUDA C++ using inline PyTorch extension conventions\n(torch.utils.cpp_extension.load_inline). Provide the full Python file\ndefining ModelNew that compiles and launches your CUDA kernel.\nDo not pass a -std= (C++ standard) flag in extra_cflags or\nextra_cuda_cflags; the harness supplies the required C++ standard\nuniformly and overrides any you provide.\n\nReference implementation:\n```python\nimport torch\nimport torch.nn as nn\n\nclass Model(nn.Module):\n    \"\"\"\n    Simple model that performs a ReLU activation.\n    \"\"\"\n    def __init__(self):\n        super(Model, self).__init__()\n    \n    def forward(self, x: torch.Tensor) -> torch.Tensor:\n        \"\"\"\n        Applies ReLU activation to the input tensor.\n\n        Args:\n            x (torch.Tensor): Input tensor of any shape.\n\n        Returns:\n            torch.Tensor: Output tensor with ReLU applied, same shape as input.\n        \"\"\"\n        return torch.relu(x)\n\nbatch_size = 4096\ndim = 393216\n\ndef get_inputs():\n    x = torch.rand(batch_size, dim)\n    return [x]\n\ndef get_init_inputs():\n    return []  # No special initialization inputs needed\n```\n",
+  "env": {
+    "torch_version": "2.5.1+cu121",
+    "cuda_version": "12.1",
+    "gpu_name": "NVIDIA A100 80GB PCIe",
+    "compute_capability": [
+      8,
+      0
+    ],
+    "driver_version": "535.309.01\n535.309.01"
+  },
+  "response_raw": "```python\nimport torch\nimport torch.nn as nn\nfrom torch.utils.cpp_extension import load_inline\n\ncuda_source = r'''\n#include <torch/extension.h>\n#include <cuda.h>\n#include <cuda_runtime.h>\n\ntemplate <typename scalar_t>\n__global__ void relu_kernel(const scalar_t* __restrict__ input,\n                            scalar_t* __restrict__ output,\n                            size_t N) {\n    const size_t idx = blockIdx.x * blockDim.x + threadIdx.x;\n    if (idx < N) {\n        const scalar_t x = input[idx];\n        // Convert to float for comparison (works for half and float)\n        const float xv = static_cast<float>(x);\n        output[idx] = (xv > 0.0f) ? x : scalar_t(0);\n    }\n}\n\nvoid relu_fp16(torch::Tensor input, torch::Tensor output) {\n    const size_t N = input.numel();\n    const int threads = 256;\n    const int blocks = static_cast<int>((N + threads - 1) / threads);\n    const auto stream = at::cuda::getCurrentCUDAStream();\n\n    AT_DISPATCH_HALF_TYPES(input.scalar_type(), \"relu_fp16\", ([&] {\n        relu_kernel<scalar_t><<<blocks, threads, 0, stream>>>(\n            input.data_ptr<scalar_t>(),\n            output.data_ptr<scalar_t>(),\n            N);\n    }));\n\n    // Optional error check (can be omitted for performance)\n    cudaError_t err = cudaGetLastError();\n    if (err != cudaSuccess) {\n        AT_ERROR(\"CUDA kernel launch failed: \", cudaGetErrorString(err));\n    }\n}\n\nPYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {\n    m.def(\"relu_fp16\", &relu_fp16, \"ReLU activation for fp16 tensors (CUDA)\");\n}\n'''\n\n# Compile the inline extension\nrelu_ext = load_inline(\n    name=\"relu_fp16_ext\",\n    cpp_sources=\"\",\n    cuda_sources=cuda_source,\n    functions=[\"relu_fp16\"],\n    verbose=False,\n)\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    Drop\u2011in replacement for the reference Model using a custom CUDA ReLU kernel.\n    All tensors are expected to be half\u2011precision (float16).\n    \"\"\"\n    def __init__(self):\n        super().__init__()\n\n    def forward(self, x: torch.Tensor) -> torch.Tensor:\n        # Ensure input is contiguous float16 on the current CUDA device\n        x = x.to(dtype=torch.float16, device='cuda', non_blocking=True).contiguous()\n        out = torch.empty_like(x)\n        relu_ext.relu_fp16(x, out)\n        return out\n```",
+  "response_finish_reason": "stop",
+  "usage": {
+    "completion_tokens": 2092,
+    "prompt_tokens": 432,
+    "total_tokens": 2524,
+    "completion_tokens_details": null,
+    "prompt_tokens_details": null
+  },
+  "parsed_code": "import torch\nimport torch.nn as nn\nfrom torch.utils.cpp_extension import load_inline\n\ncuda_source = r'''\n#include <torch/extension.h>\n#include <cuda.h>\n#include <cuda_runtime.h>\n\ntemplate <typename scalar_t>\n__global__ void relu_kernel(const scalar_t* __restrict__ input,\n                            scalar_t* __restrict__ output,\n                            size_t N) {\n    const size_t idx = blockIdx.x * blockDim.x + threadIdx.x;\n    if (idx < N) {\n        const scalar_t x = input[idx];\n        // Convert to float for comparison (works for half and float)\n        const float xv = static_cast<float>(x);\n        output[idx] = (xv > 0.0f) ? x : scalar_t(0);\n    }\n}\n\nvoid relu_fp16(torch::Tensor input, torch::Tensor output) {\n    const size_t N = input.numel();\n    const int threads = 256;\n    const int blocks = static_cast<int>((N + threads - 1) / threads);\n    const auto stream = at::cuda::getCurrentCUDAStream();\n\n    AT_DISPATCH_HALF_TYPES(input.scalar_type(), \"relu_fp16\", ([&] {\n        relu_kernel<scalar_t><<<blocks, threads, 0, stream>>>(\n            input.data_ptr<scalar_t>(),\n            output.data_ptr<scalar_t>(),\n            N);\n    }));\n\n    // Optional error check (can be omitted for performance)\n    cudaError_t err = cudaGetLastError();\n    if (err != cudaSuccess) {\n        AT_ERROR(\"CUDA kernel launch failed: \", cudaGetErrorString(err));\n    }\n}\n\nPYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {\n    m.def(\"relu_fp16\", &relu_fp16, \"ReLU activation for fp16 tensors (CUDA)\");\n}\n'''\n\n# Compile the inline extension\nrelu_ext = load_inline(\n    name=\"relu_fp16_ext\",\n    cpp_sources=\"\",\n    cuda_sources=cuda_source,\n    functions=[\"relu_fp16\"],\n    verbose=False,\n)\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    Drop\u2011in replacement for the reference Model using a custom CUDA ReLU kernel.\n    All tensors are expected to be half\u2011precision (float16).\n    \"\"\"\n    def __init__(self):\n        super().__init__()\n\n    def forward(self, x: torch.Tensor) -> torch.Tensor:\n        # Ensure input is contiguous float16 on the current CUDA device\n        x = x.to(dtype=torch.float16, device='cuda', non_blocking=True).contiguous()\n        out = torch.empty_like(x)\n        relu_ext.relu_fp16(x, out)\n        return out\n",
+  "status": "generated"
+}

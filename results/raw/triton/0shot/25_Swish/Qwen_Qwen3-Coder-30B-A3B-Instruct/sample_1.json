@@ -1,0 +1,39 @@
+{
+  "task": "25_Swish",
+  "task_family": "elementwise_activation",
+  "language": "triton",
+  "condition": "0shot",
+  "sample_index": 1,
+  "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+  "base_url": "http://localhost:8001/v1",
+  "hf_revision": "b2cff646eb4bb1d68355c01b18ae02e7cf42d120",
+  "vllm_version": "0.10.1",
+  "tensor_parallel_size": 1,
+  "temperature": 0.8,
+  "max_tokens": 8192,
+  "seed": 5001,
+  "timestamp": "2026-08-20T08:36:01+0900",
+  "prompt_sha256": "c92c2690d5db2b0396709cb06fa8f54d987905c75f088a322c2124ed6b8a94dd",
+  "prompt": "You are given a PyTorch reference implementation of a neural network operator.\nWrite a functionally equivalent GPU kernel in Triton.\n\nRequirements:\n- All tensor inputs and outputs are float16 (fp16). Accumulation precision is\n  your choice unless the reference dictates otherwise.\n- Target GPU: NVIDIA A100 (compute capability 8.0).\n- Your kernel must be a drop-in replacement: same input shapes, same output\n  shapes and dtype as the reference.\n- Output ONLY the complete Triton solution inside a single code block.\n  No explanation outside the code block.\n\nWrite a Triton kernel (triton.jit) with a Python wrapper. Provide the full\nPython file defining ModelNew that calls your Triton kernel.\n\nReference implementation:\n```python\nimport torch\nimport torch.nn as nn\n\nclass Model(nn.Module):\n    \"\"\"\n    Simple model that performs a Swish activation.\n    \"\"\"\n    def __init__(self):\n        super(Model, self).__init__()\n    \n    def forward(self, x: torch.Tensor) -> torch.Tensor:\n        \"\"\"\n        Applies Swish activation to the input tensor.\n\n        Args:\n            x (torch.Tensor): Input tensor of any shape.\n\n        Returns:\n            torch.Tensor: Output tensor with Swish applied, same shape as input.\n        \"\"\"\n        return x * torch.sigmoid(x)\n\nbatch_size = 4096\ndim = 393216\n\ndef get_inputs():\n    x = torch.rand(batch_size, dim)\n    return [x]\n\ndef get_init_inputs():\n    return []  # No special initialization inputs needed\n```\n",
+  "env": {
+    "torch_version": "2.5.1+cu121",
+    "cuda_version": "12.1",
+    "gpu_name": "NVIDIA A100 80GB PCIe",
+    "compute_capability": [
+      8,
+      0
+    ],
+    "driver_version": "535.309.01\n535.309.01"
+  },
+  "response_raw": "```python\nimport torch\nimport triton\nimport triton.language as tl\n\n@triton.jit\ndef swish_kernel(\n    x_ptr, \n    output_ptr, \n    n_elements, \n    BLOCK_SIZE: tl.constexpr\n):\n    # Get the program ID\n    pid = tl.program_id(axis=0)\n    \n    # Compute the starting index for this block\n    block_start = pid * BLOCK_SIZE\n    \n    # Create a mask for valid elements\n    offsets = block_start + tl.arange(0, BLOCK_SIZE)\n    mask = offsets < n_elements\n    \n    # Load input data\n    x = tl.load(x_ptr + offsets, mask=mask)\n    \n    # Compute sigmoid(x)\n    sigmoid_x = 1.0 / (1.0 + tl.exp(-x))\n    \n    # Compute swish: x * sigmoid(x)\n    output = x * sigmoid_x\n    \n    # Store result\n    tl.store(output_ptr + offsets, output, mask=mask)\n\nclass ModelNew(torch.nn.Module):\n    def __init__(self):\n        super(ModelNew, self).__init__()\n    \n    def forward(self, x: torch.Tensor) -> torch.Tensor:\n        \"\"\"\n        Applies Swish activation to the input tensor using Triton kernel.\n\n        Args:\n            x (torch.Tensor): Input tensor of any shape.\n\n        Returns:\n            torch.Tensor: Output tensor with Swish applied, same shape as input.\n        \"\"\"\n        # Flatten input for kernel processing\n        original_shape = x.shape\n        x_flat = x.view(-1).contiguous()\n        \n        # Prepare output tensor\n        output_flat = torch.empty_like(x_flat, dtype=torch.float16)\n        \n        # Get number of elements\n        n_elements = x_flat.numel()\n        \n        # Launch kernel\n        grid = (triton.cdiv(n_elements, 1024),)\n        swish_kernel[grid](\n            x_flat,\n            output_flat,\n            n_elements,\n            BLOCK_SIZE=1024\n        )\n        \n        # Reshape output to match input shape\n        return output_flat.view(original_shape)\n\n# Test function\ndef get_inputs():\n    x = torch.rand(4096, 393216, dtype=torch.float16)\n    return [x]\n\ndef get_init_inputs():\n    return []\n```",
+  "response_finish_reason": "stop",
+  "usage": {
+    "completion_tokens": 483,
+    "prompt_tokens": 337,
+    "total_tokens": 820,
+    "completion_tokens_details": null,
+    "prompt_tokens_details": null
+  },
+  "parsed_code": "import torch\nimport triton\nimport triton.language as tl\n\n@triton.jit\ndef swish_kernel(\n    x_ptr, \n    output_ptr, \n    n_elements, \n    BLOCK_SIZE: tl.constexpr\n):\n    # Get the program ID\n    pid = tl.program_id(axis=0)\n    \n    # Compute the starting index for this block\n    block_start = pid * BLOCK_SIZE\n    \n    # Create a mask for valid elements\n    offsets = block_start + tl.arange(0, BLOCK_SIZE)\n    mask = offsets < n_elements\n    \n    # Load input data\n    x = tl.load(x_ptr + offsets, mask=mask)\n    \n    # Compute sigmoid(x)\n    sigmoid_x = 1.0 / (1.0 + tl.exp(-x))\n    \n    # Compute swish: x * sigmoid(x)\n    output = x * sigmoid_x\n    \n    # Store result\n    tl.store(output_ptr + offsets, output, mask=mask)\n\nclass ModelNew(torch.nn.Module):\n    def __init__(self):\n        super(ModelNew, self).__init__()\n    \n    def forward(self, x: torch.Tensor) -> torch.Tensor:\n        \"\"\"\n        Applies Swish activation to the input tensor using Triton kernel.\n\n        Args:\n            x (torch.Tensor): Input tensor of any shape.\n\n        Returns:\n            torch.Tensor: Output tensor with Swish applied, same shape as input.\n        \"\"\"\n        # Flatten input for kernel processing\n        original_shape = x.shape\n        x_flat = x.view(-1).contiguous()\n        \n        # Prepare output tensor\n        output_flat = torch.empty_like(x_flat, dtype=torch.float16)\n        \n        # Get number of elements\n        n_elements = x_flat.numel()\n        \n        # Launch kernel\n        grid = (triton.cdiv(n_elements, 1024),)\n        swish_kernel[grid](\n            x_flat,\n            output_flat,\n            n_elements,\n            BLOCK_SIZE=1024\n        )\n        \n        # Reshape output to match input shape\n        return output_flat.view(original_shape)\n\n# Test function\ndef get_inputs():\n    x = torch.rand(4096, 393216, dtype=torch.float16)\n    return [x]\n\ndef get_init_inputs():\n    return []\n",
+  "status": "generated"
+}

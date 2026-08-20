@@ -1,0 +1,39 @@
+{
+  "task": "39_L2Norm_",
+  "task_family": "normalization",
+  "language": "triton",
+  "condition": "0shot",
+  "sample_index": 2,
+  "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+  "base_url": "http://localhost:8001/v1",
+  "hf_revision": "b2cff646eb4bb1d68355c01b18ae02e7cf42d120",
+  "vllm_version": "0.10.1",
+  "tensor_parallel_size": 1,
+  "temperature": 0.8,
+  "max_tokens": 8192,
+  "seed": 5002,
+  "timestamp": "2026-08-20T08:37:36+0900",
+  "prompt_sha256": "eb03e6ab3257ae34693d56f108a0f88c207d0fc72d4eb41c6eca8db318eb7658",
+  "prompt": "You are given a PyTorch reference implementation of a neural network operator.\nWrite a functionally equivalent GPU kernel in Triton.\n\nRequirements:\n- All tensor inputs and outputs are float16 (fp16). Accumulation precision is\n  your choice unless the reference dictates otherwise.\n- Target GPU: NVIDIA A100 (compute capability 8.0).\n- Your kernel must be a drop-in replacement: same input shapes, same output\n  shapes and dtype as the reference.\n- Output ONLY the complete Triton solution inside a single code block.\n  No explanation outside the code block.\n\nWrite a Triton kernel (triton.jit) with a Python wrapper. Provide the full\nPython file defining ModelNew that calls your Triton kernel.\n\nReference implementation:\n```python\nimport torch\nimport torch.nn as nn\n\nclass Model(nn.Module):\n    \"\"\"\n    Simple model that performs L2 normalization.\n    \"\"\"\n    def __init__(self):\n        \"\"\"\n        Initializes the L2Norm layer.\n\n        Args:\n            dim (int): Dimension along which to normalize.\n        \"\"\"\n        super(Model, self).__init__()\n\n    def forward(self, x: torch.Tensor) -> torch.Tensor:\n        \"\"\"\n        Applies L2 normalization to the input tensor.\n\n        Args:\n            x (torch.Tensor): Input tensor of shape (*, dim, *).\n\n        Returns:\n            torch.Tensor: Output tensor with L2 normalization applied, same shape as input.\n        \"\"\"\n        return x / torch.norm(x, p=2, dim=1, keepdim=True)\n\nbatch_size = 32768\n# choose dim so total <2^31\ndim = 65535\n\ndef get_inputs():\n    x = torch.rand(batch_size, dim)\n    return [x]\n\ndef get_init_inputs():\n    return []\n```\n",
+  "env": {
+    "torch_version": "2.5.1+cu121",
+    "cuda_version": "12.1",
+    "gpu_name": "NVIDIA A100 80GB PCIe",
+    "compute_capability": [
+      8,
+      0
+    ],
+    "driver_version": "535.309.01\n535.309.01"
+  },
+  "response_raw": "```python\nimport torch\nimport triton\nimport triton.language as tl\n\n@triton.jit\ndef l2_norm_kernel(\n    x_ptr, output_ptr, \n    n_elements,\n    BLOCK_SIZE: tl.constexpr\n):\n    # Compute the global thread index\n    pid = tl.program_id(0)\n    # Each program processes one row\n    row_idx = pid\n    \n    # Calculate the starting position for this row\n    row_start = row_idx * n_elements\n    \n    # Accumulate squared values for this row\n    sum_sq = tl.zeros((BLOCK_SIZE,), dtype=tl.float32)\n    \n    # Load data and compute sum of squares\n    for i in range(0, n_elements, BLOCK_SIZE):\n        offsets = i + tl.arange(0, BLOCK_SIZE)\n        mask = offsets < n_elements\n        x_vals = tl.load(x_ptr + row_start + offsets, mask=mask)\n        sum_sq += x_vals * x_vals\n    \n    # Reduce sum of squares across the block\n    sum_sq = tl.sum(sum_sq, axis=0)\n    \n    # Compute the norm\n    norm = tl.sqrt(sum_sq)\n    \n    # Avoid division by zero\n    norm = tl.where(norm == 0.0, 1.0, norm)\n    \n    # Normalize the row\n    for i in range(0, n_elements, BLOCK_SIZE):\n        offsets = i + tl.arange(0, BLOCK_SIZE)\n        mask = offsets < n_elements\n        x_vals = tl.load(x_ptr + row_start + offsets, mask=mask)\n        output_vals = x_vals / norm\n        tl.store(output_ptr + row_start + offsets, output_vals, mask=mask)\n\nclass ModelNew(torch.nn.Module):\n    def __init__(self):\n        super(ModelNew, self).__init__()\n        \n    def forward(self, x: torch.Tensor) -> torch.Tensor:\n        # Ensure input is contiguous and on GPU\n        if not x.is_contiguous():\n            x = x.contiguous()\n        if not x.is_cuda:\n            x = x.cuda()\n            \n        # Create output tensor\n        output = torch.empty_like(x, dtype=torch.float16)\n        \n        # Get the number of elements per row\n        n_elements = x.shape[1]\n        \n        # Launch kernel\n        grid = (x.shape[0],)\n        BLOCK_SIZE = 1024\n        \n        l2_norm_kernel[grid](\n            x, output,\n            n_elements,\n            BLOCK_SIZE=BLOCK_SIZE\n        )\n        \n        return output\n\n# Test function\ndef get_inputs():\n    batch_size = 32768\n    dim = 65535\n    x = torch.rand(batch_size, dim, dtype=torch.float16)\n    return [x]\n\ndef get_init_inputs():\n    return []\n```",
+  "response_finish_reason": "stop",
+  "usage": {
+    "completion_tokens": 588,
+    "prompt_tokens": 381,
+    "total_tokens": 969,
+    "completion_tokens_details": null,
+    "prompt_tokens_details": null
+  },
+  "parsed_code": "import torch\nimport triton\nimport triton.language as tl\n\n@triton.jit\ndef l2_norm_kernel(\n    x_ptr, output_ptr, \n    n_elements,\n    BLOCK_SIZE: tl.constexpr\n):\n    # Compute the global thread index\n    pid = tl.program_id(0)\n    # Each program processes one row\n    row_idx = pid\n    \n    # Calculate the starting position for this row\n    row_start = row_idx * n_elements\n    \n    # Accumulate squared values for this row\n    sum_sq = tl.zeros((BLOCK_SIZE,), dtype=tl.float32)\n    \n    # Load data and compute sum of squares\n    for i in range(0, n_elements, BLOCK_SIZE):\n        offsets = i + tl.arange(0, BLOCK_SIZE)\n        mask = offsets < n_elements\n        x_vals = tl.load(x_ptr + row_start + offsets, mask=mask)\n        sum_sq += x_vals * x_vals\n    \n    # Reduce sum of squares across the block\n    sum_sq = tl.sum(sum_sq, axis=0)\n    \n    # Compute the norm\n    norm = tl.sqrt(sum_sq)\n    \n    # Avoid division by zero\n    norm = tl.where(norm == 0.0, 1.0, norm)\n    \n    # Normalize the row\n    for i in range(0, n_elements, BLOCK_SIZE):\n        offsets = i + tl.arange(0, BLOCK_SIZE)\n        mask = offsets < n_elements\n        x_vals = tl.load(x_ptr + row_start + offsets, mask=mask)\n        output_vals = x_vals / norm\n        tl.store(output_ptr + row_start + offsets, output_vals, mask=mask)\n\nclass ModelNew(torch.nn.Module):\n    def __init__(self):\n        super(ModelNew, self).__init__()\n        \n    def forward(self, x: torch.Tensor) -> torch.Tensor:\n        # Ensure input is contiguous and on GPU\n        if not x.is_contiguous():\n            x = x.contiguous()\n        if not x.is_cuda:\n            x = x.cuda()\n            \n        # Create output tensor\n        output = torch.empty_like(x, dtype=torch.float16)\n        \n        # Get the number of elements per row\n        n_elements = x.shape[1]\n        \n        # Launch kernel\n        grid = (x.shape[0],)\n        BLOCK_SIZE = 1024\n        \n        l2_norm_kernel[grid](\n            x, output,\n            n_elements,\n            BLOCK_SIZE=BLOCK_SIZE\n        )\n        \n        return output\n\n# Test function\ndef get_inputs():\n    batch_size = 32768\n    dim = 65535\n    x = torch.rand(batch_size, dim, dtype=torch.float16)\n    return [x]\n\ndef get_init_inputs():\n    return []\n",
+  "status": "generated"
+}

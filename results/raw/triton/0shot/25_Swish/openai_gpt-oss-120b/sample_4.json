@@ -1,0 +1,39 @@
+{
+  "task": "25_Swish",
+  "task_family": "elementwise_activation",
+  "language": "triton",
+  "condition": "0shot",
+  "sample_index": 4,
+  "model": "openai/gpt-oss-120b",
+  "base_url": "http://localhost:8000/v1",
+  "hf_revision": "b5c939de8f754692c1647ca79fbf85e8c1e70f8a",
+  "vllm_version": "0.10.1",
+  "tensor_parallel_size": 1,
+  "temperature": 0.8,
+  "max_tokens": 8192,
+  "seed": 2004,
+  "timestamp": "2026-08-20T07:15:36+0900",
+  "prompt_sha256": "c92c2690d5db2b0396709cb06fa8f54d987905c75f088a322c2124ed6b8a94dd",
+  "prompt": "You are given a PyTorch reference implementation of a neural network operator.\nWrite a functionally equivalent GPU kernel in Triton.\n\nRequirements:\n- All tensor inputs and outputs are float16 (fp16). Accumulation precision is\n  your choice unless the reference dictates otherwise.\n- Target GPU: NVIDIA A100 (compute capability 8.0).\n- Your kernel must be a drop-in replacement: same input shapes, same output\n  shapes and dtype as the reference.\n- Output ONLY the complete Triton solution inside a single code block.\n  No explanation outside the code block.\n\nWrite a Triton kernel (triton.jit) with a Python wrapper. Provide the full\nPython file defining ModelNew that calls your Triton kernel.\n\nReference implementation:\n```python\nimport torch\nimport torch.nn as nn\n\nclass Model(nn.Module):\n    \"\"\"\n    Simple model that performs a Swish activation.\n    \"\"\"\n    def __init__(self):\n        super(Model, self).__init__()\n    \n    def forward(self, x: torch.Tensor) -> torch.Tensor:\n        \"\"\"\n        Applies Swish activation to the input tensor.\n\n        Args:\n            x (torch.Tensor): Input tensor of any shape.\n\n        Returns:\n            torch.Tensor: Output tensor with Swish applied, same shape as input.\n        \"\"\"\n        return x * torch.sigmoid(x)\n\nbatch_size = 4096\ndim = 393216\n\ndef get_inputs():\n    x = torch.rand(batch_size, dim)\n    return [x]\n\ndef get_init_inputs():\n    return []  # No special initialization inputs needed\n```\n",
+  "env": {
+    "torch_version": "2.5.1+cu121",
+    "cuda_version": "12.1",
+    "gpu_name": "NVIDIA A100 80GB PCIe",
+    "compute_capability": [
+      8,
+      0
+    ],
+    "driver_version": "535.309.01\n535.309.01"
+  },
+  "response_raw": "```python\nimport torch\nimport torch.nn as nn\nimport triton\nimport triton.language as tl\n\n\n@triton.jit\ndef swish_kernel(\n    x_ptr,          # *Pointer* to input tensor (fp16)\n    y_ptr,          # *Pointer* to output tensor (fp16)\n    N: tl.int32,    # Number of elements\n    BLOCK_SIZE: tl.constexpr,\n):\n    pid = tl.program_id(0)\n    block_start = pid * BLOCK_SIZE\n    offsets = tl.arange(0, BLOCK_SIZE)\n    idx = block_start + offsets\n    mask = idx < N\n\n    # Load fp16, convert to fp32 for higher\u2011precision math\n    x = tl.load(x_ptr + idx, mask=mask, other=0.0).to(tl.float32)\n    y = x * tl.sigmoid(x)                     # Swish in fp32\n    y = y.to(tl.float16)                     # Cast back to fp16\n\n    tl.store(y_ptr + idx, y, mask=mask)\n\n\ndef swish_triton(x: torch.Tensor) -> torch.Tensor:\n    \"\"\"Apply Swish activation using the Triton kernel.\"\"\"\n    if not x.is_cuda:\n        raise RuntimeError(\"Input tensor must be on CUDA device\")\n    orig_shape = x.shape\n    x = x.view(-1).contiguous()\n    N = x.numel()\n    y = torch.empty_like(x)\n\n    BLOCK_SIZE = 1024\n    grid = lambda meta: (triton.cdiv(N, meta[\"BLOCK_SIZE\"]),)\n\n    swish_kernel[grid](\n        x,\n        y,\n        N,\n        BLOCK_SIZE=BLOCK_SIZE,\n        num_warps=4,\n    )\n    return y.view(orig_shape)\n\n\nclass ModelNew(nn.Module):\n    \"\"\"Drop\u2011in replacement for the reference Model using Triton.\"\"\"\n\n    def __init__(self):\n        super().__init__()\n\n    def forward(self, x: torch.Tensor) -> torch.Tensor:\n        # Ensure fp16 on CUDA (reference uses default torch.rand -> fp32)\n        if x.dtype != torch.float16:\n            x = x.to(torch.float16)\n        return swish_triton(x)\n\n\ndef get_inputs():\n    # Match the reference shapes and device, using fp16 for consistency\n    x = torch.rand(4096, 393216, device=\"cuda\", dtype=torch.float16)\n    return [x]\n\n\ndef get_init_inputs():\n    return []\n```",
+  "response_finish_reason": "stop",
+  "usage": {
+    "completion_tokens": 1353,
+    "prompt_tokens": 391,
+    "total_tokens": 1744,
+    "completion_tokens_details": null,
+    "prompt_tokens_details": null
+  },
+  "parsed_code": "import torch\nimport torch.nn as nn\nimport triton\nimport triton.language as tl\n\n\n@triton.jit\ndef swish_kernel(\n    x_ptr,          # *Pointer* to input tensor (fp16)\n    y_ptr,          # *Pointer* to output tensor (fp16)\n    N: tl.int32,    # Number of elements\n    BLOCK_SIZE: tl.constexpr,\n):\n    pid = tl.program_id(0)\n    block_start = pid * BLOCK_SIZE\n    offsets = tl.arange(0, BLOCK_SIZE)\n    idx = block_start + offsets\n    mask = idx < N\n\n    # Load fp16, convert to fp32 for higher\u2011precision math\n    x = tl.load(x_ptr + idx, mask=mask, other=0.0).to(tl.float32)\n    y = x * tl.sigmoid(x)                     # Swish in fp32\n    y = y.to(tl.float16)                     # Cast back to fp16\n\n    tl.store(y_ptr + idx, y, mask=mask)\n\n\ndef swish_triton(x: torch.Tensor) -> torch.Tensor:\n    \"\"\"Apply Swish activation using the Triton kernel.\"\"\"\n    if not x.is_cuda:\n        raise RuntimeError(\"Input tensor must be on CUDA device\")\n    orig_shape = x.shape\n    x = x.view(-1).contiguous()\n    N = x.numel()\n    y = torch.empty_like(x)\n\n    BLOCK_SIZE = 1024\n    grid = lambda meta: (triton.cdiv(N, meta[\"BLOCK_SIZE\"]),)\n\n    swish_kernel[grid](\n        x,\n        y,\n        N,\n        BLOCK_SIZE=BLOCK_SIZE,\n        num_warps=4,\n    )\n    return y.view(orig_shape)\n\n\nclass ModelNew(nn.Module):\n    \"\"\"Drop\u2011in replacement for the reference Model using Triton.\"\"\"\n\n    def __init__(self):\n        super().__init__()\n\n    def forward(self, x: torch.Tensor) -> torch.Tensor:\n        # Ensure fp16 on CUDA (reference uses default torch.rand -> fp32)\n        if x.dtype != torch.float16:\n            x = x.to(torch.float16)\n        return swish_triton(x)\n\n\ndef get_inputs():\n    # Match the reference shapes and device, using fp16 for consistency\n    x = torch.rand(4096, 393216, device=\"cuda\", dtype=torch.float16)\n    return [x]\n\n\ndef get_init_inputs():\n    return []\n",
+  "status": "generated"
+}

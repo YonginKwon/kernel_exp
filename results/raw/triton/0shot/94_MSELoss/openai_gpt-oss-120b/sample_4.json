@@ -1,0 +1,39 @@
+{
+  "task": "94_MSELoss",
+  "task_family": "loss",
+  "language": "triton",
+  "condition": "0shot",
+  "sample_index": 4,
+  "model": "openai/gpt-oss-120b",
+  "base_url": "http://localhost:8000/v1",
+  "hf_revision": "b5c939de8f754692c1647ca79fbf85e8c1e70f8a",
+  "vllm_version": "0.10.1",
+  "tensor_parallel_size": 1,
+  "temperature": 0.8,
+  "max_tokens": 8192,
+  "seed": 2004,
+  "timestamp": "2026-08-20T07:30:05+0900",
+  "prompt_sha256": "e7a9c9510ee35790ae036b6928d2d3571642cc4909cf4498301439216da2dde8",
+  "prompt": "You are given a PyTorch reference implementation of a neural network operator.\nWrite a functionally equivalent GPU kernel in Triton.\n\nRequirements:\n- All tensor inputs and outputs are float16 (fp16). Accumulation precision is\n  your choice unless the reference dictates otherwise.\n- Target GPU: NVIDIA A100 (compute capability 8.0).\n- Your kernel must be a drop-in replacement: same input shapes, same output\n  shapes and dtype as the reference.\n- Output ONLY the complete Triton solution inside a single code block.\n  No explanation outside the code block.\n\nWrite a Triton kernel (triton.jit) with a Python wrapper. Provide the full\nPython file defining ModelNew that calls your Triton kernel.\n\nReference implementation:\n```python\nimport torch\nimport torch.nn as nn\n\nclass Model(nn.Module):\n    \"\"\"\n    A model that computes the Mean Squared Error loss for regression tasks.\n\n    Parameters:\n        None\n    \"\"\"\n    def __init__(self):\n        super(Model, self).__init__()\n\n    def forward(self, predictions, targets):\n        return torch.mean((predictions - targets) ** 2)\n\nbatch_size = 32768\ninput_shape = (32768,)\ndim = 1\n\ndef get_inputs():\n    scale = torch.rand(())\n    return [torch.rand(batch_size, *input_shape)*scale, torch.rand(batch_size, *input_shape)]\n\ndef get_init_inputs():\n    return []\n\n```\n",
+  "env": {
+    "torch_version": "2.5.1+cu121",
+    "cuda_version": "12.1",
+    "gpu_name": "NVIDIA A100 80GB PCIe",
+    "compute_capability": [
+      8,
+      0
+    ],
+    "driver_version": "535.309.01\n535.309.01"
+  },
+  "response_raw": "```python\n# model_triton.py\nimport torch\nimport triton\nimport triton.language as tl\n\n\n@triton.jit\ndef mse_kernel(\n    pred_ptr,          # *fp16\n    targ_ptr,          # *fp16\n    sum_ptr,           # *fp32 (single element)\n    N,                 # total number of elements\n    BLOCK_SIZE: tl.constexpr,\n):\n    pid = tl.program_id(0)\n    block_start = pid * BLOCK_SIZE\n    offs = block_start + tl.arange(0, BLOCK_SIZE)\n    mask = offs < N\n\n    # load fp16, cast to fp32 for accumulation\n    pred = tl.load(pred_ptr + offs, mask=mask, other=0.0).to(tl.float32)\n    targ = tl.load(targ_ptr + offs, mask=mask, other=0.0).to(tl.float32)\n\n    diff = pred - targ\n    sq = diff * diff\n\n    # each valid thread atomically adds its contribution\n    tl.atomic_add(sum_ptr, 0, sq, mask=mask)\n\n\nclass ModelNew(torch.nn.Module):\n    \"\"\"\n    Triton implementation of MSE loss (identical API to the reference Model).\n    \"\"\"\n\n    def __init__(self, block_size: int = 1024):\n        super().__init__()\n        self.block_size = block_size\n\n    def forward(self, predictions: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:\n        assert predictions.shape == targets.shape, \"predictions and targets must have the same shape\"\n        assert predictions.dtype == torch.float16 and targets.dtype == torch.float16, \"inputs must be fp16\"\n        N = predictions.numel()\n        # allocate a single-element accumulator in fp32 on the device\n        total = torch.zeros(1, dtype=torch.float32, device=predictions.device)\n\n        # launch kernel\n        grid = (triton.cdiv(N, self.block_size),)\n        mse_kernel[grid](\n            predictions,\n            targets,\n            total,\n            N,\n            BLOCK_SIZE=self.block_size,\n        )\n\n        # compute mean and cast back to fp16 (as in the reference)\n        mean = total / N\n        return mean.to(predictions.dtype)\n\n\n# ----------------------------------------------------------------------\n# Helper functions matching the reference script (optional for testing)\n\ndef get_inputs():\n    batch_size = 32768\n    input_shape = (32768,)\n    scale = torch.rand(())\n    preds = torch.rand(batch_size, *input_shape, dtype=torch.float16, device=\"cuda\") * scale\n    targs = torch.rand(batch_size, *input_shape, dtype=torch.float16, device=\"cuda\")\n    return [preds, targs]\n\n\ndef get_init_inputs():\n    return []\n\n\n# Example usage\nif __name__ == \"__main__\":\n    model = ModelNew().cuda()\n    preds, targs = get_inputs()\n    loss = model(preds, targs)\n    print(\"MSE loss (Triton):\", loss.item())\n```",
+  "response_finish_reason": "stop",
+  "usage": {
+    "completion_tokens": 1651,
+    "prompt_tokens": 365,
+    "total_tokens": 2016,
+    "completion_tokens_details": null,
+    "prompt_tokens_details": null
+  },
+  "parsed_code": "# model_triton.py\nimport torch\nimport triton\nimport triton.language as tl\n\n\n@triton.jit\ndef mse_kernel(\n    pred_ptr,          # *fp16\n    targ_ptr,          # *fp16\n    sum_ptr,           # *fp32 (single element)\n    N,                 # total number of elements\n    BLOCK_SIZE: tl.constexpr,\n):\n    pid = tl.program_id(0)\n    block_start = pid * BLOCK_SIZE\n    offs = block_start + tl.arange(0, BLOCK_SIZE)\n    mask = offs < N\n\n    # load fp16, cast to fp32 for accumulation\n    pred = tl.load(pred_ptr + offs, mask=mask, other=0.0).to(tl.float32)\n    targ = tl.load(targ_ptr + offs, mask=mask, other=0.0).to(tl.float32)\n\n    diff = pred - targ\n    sq = diff * diff\n\n    # each valid thread atomically adds its contribution\n    tl.atomic_add(sum_ptr, 0, sq, mask=mask)\n\n\nclass ModelNew(torch.nn.Module):\n    \"\"\"\n    Triton implementation of MSE loss (identical API to the reference Model).\n    \"\"\"\n\n    def __init__(self, block_size: int = 1024):\n        super().__init__()\n        self.block_size = block_size\n\n    def forward(self, predictions: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:\n        assert predictions.shape == targets.shape, \"predictions and targets must have the same shape\"\n        assert predictions.dtype == torch.float16 and targets.dtype == torch.float16, \"inputs must be fp16\"\n        N = predictions.numel()\n        # allocate a single-element accumulator in fp32 on the device\n        total = torch.zeros(1, dtype=torch.float32, device=predictions.device)\n\n        # launch kernel\n        grid = (triton.cdiv(N, self.block_size),)\n        mse_kernel[grid](\n            predictions,\n            targets,\n            total,\n            N,\n            BLOCK_SIZE=self.block_size,\n        )\n\n        # compute mean and cast back to fp16 (as in the reference)\n        mean = total / N\n        return mean.to(predictions.dtype)\n\n\n# ----------------------------------------------------------------------\n# Helper functions matching the reference script (optional for testing)\n\ndef get_inputs():\n    batch_size = 32768\n    input_shape = (32768,)\n    scale = torch.rand(())\n    preds = torch.rand(batch_size, *input_shape, dtype=torch.float16, device=\"cuda\") * scale\n    targs = torch.rand(batch_size, *input_shape, dtype=torch.float16, device=\"cuda\")\n    return [preds, targs]\n\n\ndef get_init_inputs():\n    return []\n\n\n# Example usage\nif __name__ == \"__main__\":\n    model = ModelNew().cuda()\n    preds, targs = get_inputs()\n    loss = model(preds, targs)\n    print(\"MSE loss (Triton):\", loss.item())\n",
+  "status": "generated"
+}

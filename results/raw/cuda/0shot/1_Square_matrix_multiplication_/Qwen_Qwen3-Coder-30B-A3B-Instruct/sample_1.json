@@ -1,0 +1,39 @@
+{
+  "task": "1_Square_matrix_multiplication_",
+  "task_family": "matmul",
+  "language": "cuda",
+  "condition": "0shot",
+  "sample_index": 1,
+  "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+  "base_url": "http://localhost:8001/v1",
+  "hf_revision": "b2cff646eb4bb1d68355c01b18ae02e7cf42d120",
+  "vllm_version": "0.10.1",
+  "tensor_parallel_size": 1,
+  "temperature": 0.8,
+  "max_tokens": 8192,
+  "seed": 4001,
+  "timestamp": "2026-08-20T08:18:12+0900",
+  "prompt_sha256": "3fb7bc6f42580688b0d1fe5ef9819a820b447c3638cdbf7aa280b321c358c769",
+  "prompt": "You are given a PyTorch reference implementation of a neural network operator.\nWrite a functionally equivalent GPU kernel in CUDA.\n\nRequirements:\n- All tensor inputs and outputs are float16 (fp16). Accumulation precision is\n  your choice unless the reference dictates otherwise.\n- Target GPU: NVIDIA A100 (compute capability 8.0).\n- Your kernel must be a drop-in replacement: same input shapes, same output\n  shapes and dtype as the reference.\n- Output ONLY the complete CUDA solution inside a single code block.\n  No explanation outside the code block.\n\nWrite CUDA C++ using inline PyTorch extension conventions\n(torch.utils.cpp_extension.load_inline). Provide the full Python file\ndefining ModelNew that compiles and launches your CUDA kernel.\nDo not pass a -std= (C++ standard) flag in extra_cflags or\nextra_cuda_cflags; the harness supplies the required C++ standard\nuniformly and overrides any you provide.\n\nReference implementation:\n```python\nimport torch\nimport torch.nn as nn\n\nclass Model(nn.Module):\n    \"\"\"\n    Simple model that performs a single square matrix multiplication (C = A * B)\n    \"\"\"\n    def __init__(self):\n        super(Model, self).__init__()\n    \n    def forward(self, A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:\n        \"\"\"\n        Performs the matrix multiplication.\n\n        Args:\n            A (torch.Tensor): Input matrix A of shape (N, N).\n            B (torch.Tensor): Input matrix B of shape (N, N).\n\n        Returns:\n            torch.Tensor: Output matrix C of shape (N, N).\n        \"\"\"\n        return torch.matmul(A, B)\n\nN = 2048 * 2\n\ndef get_inputs():\n    A = torch.rand(N, N)\n    B = torch.rand(N, N)\n    return [A, B]\n\ndef get_init_inputs():\n    return []  # No special initialization inputs needed\n```\n",
+  "env": {
+    "torch_version": "2.5.1+cu121",
+    "cuda_version": "12.1",
+    "gpu_name": "NVIDIA A100 80GB PCIe",
+    "compute_capability": [
+      8,
+      0
+    ],
+    "driver_version": "535.309.01\n535.309.01"
+  },
+  "response_raw": "```python\nimport torch\nfrom torch.utils.cpp_extension import load_inline\n\n# CUDA kernel implementation\ncuda_source = \"\"\"\n#include <cuda_fp16.h>\n#include <cuda_runtime.h>\n\n__global__ void matmul_kernel(const half* A, const half* B, half* C, int N) {\n    int row = blockIdx.y * blockDim.y + threadIdx.y;\n    int col = blockIdx.x * blockDim.x + threadIdx.x;\n    \n    if (row < N && col < N) {\n        float sum = 0.0f;\n        for (int k = 0; k < N; ++k) {\n            sum += (float)A[row * N + k] * (float)B[k * N + col];\n        }\n        C[row * N + col] = __float2half(sum);\n    }\n}\n\nextern \"C\" {\n    void launch_matmul(const half* A, const half* B, half* C, int N) {\n        dim3 blockSize(16, 16);\n        dim3 gridSize((N + blockSize.x - 1) / blockSize.x, \n                      (N + blockSize.y - 1) / blockSize.y);\n        matmul_kernel<<<gridSize, blockSize>>>(A, B, C, N);\n        cudaDeviceSynchronize();\n    }\n}\n\"\"\"\n\n# Python wrapper\ndef compile_and_run():\n    # Load the CUDA extension\n    module = load_inline(\n        name=\"matmul_ext\",\n        cpp_sources=[],\n        cuda_sources=[cuda_source],\n        functions=[\"launch_matmul\"],\n        verbose=True\n    )\n    \n    class ModelNew(torch.nn.Module):\n        def __init__(self):\n            super(ModelNew, self).__init__()\n        \n        def forward(self, A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:\n            # Ensure inputs are fp16\n            A = A.to(torch.float16)\n            B = B.to(torch.float16)\n            \n            # Create output tensor\n            C = torch.empty(A.shape[0], B.shape[1], dtype=torch.float16, device=A.device)\n            \n            # Launch CUDA kernel\n            module.launch_matmul(A.data_ptr(), B.data_ptr(), C.data_ptr(), A.shape[0])\n            \n            return C\n    \n    return ModelNew\n\n# Create the model\nModelNew = compile_and_run()\n\n# Test function\ndef get_inputs():\n    N = 2048 * 2\n    A = torch.rand(N, N, dtype=torch.float16)\n    B = torch.rand(N, N, dtype=torch.float16)\n    return [A, B]\n\ndef get_init_inputs():\n    return []\n```",
+  "response_finish_reason": "stop",
+  "usage": {
+    "completion_tokens": 551,
+    "prompt_tokens": 410,
+    "total_tokens": 961,
+    "completion_tokens_details": null,
+    "prompt_tokens_details": null
+  },
+  "parsed_code": "import torch\nfrom torch.utils.cpp_extension import load_inline\n\n# CUDA kernel implementation\ncuda_source = \"\"\"\n#include <cuda_fp16.h>\n#include <cuda_runtime.h>\n\n__global__ void matmul_kernel(const half* A, const half* B, half* C, int N) {\n    int row = blockIdx.y * blockDim.y + threadIdx.y;\n    int col = blockIdx.x * blockDim.x + threadIdx.x;\n    \n    if (row < N && col < N) {\n        float sum = 0.0f;\n        for (int k = 0; k < N; ++k) {\n            sum += (float)A[row * N + k] * (float)B[k * N + col];\n        }\n        C[row * N + col] = __float2half(sum);\n    }\n}\n\nextern \"C\" {\n    void launch_matmul(const half* A, const half* B, half* C, int N) {\n        dim3 blockSize(16, 16);\n        dim3 gridSize((N + blockSize.x - 1) / blockSize.x, \n                      (N + blockSize.y - 1) / blockSize.y);\n        matmul_kernel<<<gridSize, blockSize>>>(A, B, C, N);\n        cudaDeviceSynchronize();\n    }\n}\n\"\"\"\n\n# Python wrapper\ndef compile_and_run():\n    # Load the CUDA extension\n    module = load_inline(\n        name=\"matmul_ext\",\n        cpp_sources=[],\n        cuda_sources=[cuda_source],\n        functions=[\"launch_matmul\"],\n        verbose=True\n    )\n    \n    class ModelNew(torch.nn.Module):\n        def __init__(self):\n            super(ModelNew, self).__init__()\n        \n        def forward(self, A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:\n            # Ensure inputs are fp16\n            A = A.to(torch.float16)\n            B = B.to(torch.float16)\n            \n            # Create output tensor\n            C = torch.empty(A.shape[0], B.shape[1], dtype=torch.float16, device=A.device)\n            \n            # Launch CUDA kernel\n            module.launch_matmul(A.data_ptr(), B.data_ptr(), C.data_ptr(), A.shape[0])\n            \n            return C\n    \n    return ModelNew\n\n# Create the model\nModelNew = compile_and_run()\n\n# Test function\ndef get_inputs():\n    N = 2048 * 2\n    A = torch.rand(N, N, dtype=torch.float16)\n    B = torch.rand(N, N, dtype=torch.float16)\n    return [A, B]\n\ndef get_init_inputs():\n    return []\n",
+  "status": "generated"
+}

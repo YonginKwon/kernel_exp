@@ -1,0 +1,39 @@
+{
+  "task": "25_Swish",
+  "task_family": "elementwise_activation",
+  "language": "ptx",
+  "condition": "0shot",
+  "sample_index": 4,
+  "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+  "base_url": "http://localhost:8001/v1",
+  "hf_revision": "b2cff646eb4bb1d68355c01b18ae02e7cf42d120",
+  "vllm_version": "0.10.1",
+  "tensor_parallel_size": 1,
+  "temperature": 0.8,
+  "max_tokens": 8192,
+  "seed": 6004,
+  "timestamp": "2026-08-20T08:54:04+0900",
+  "prompt_sha256": "c2860f33c4213962f574114450f66201787631b0aae9415bf5e49211f59cdf61",
+  "prompt": "You are given a PyTorch reference implementation of a neural network operator.\nWrite a functionally equivalent GPU kernel in PTX.\n\nRequirements:\n- All tensor inputs and outputs are float16 (fp16). Accumulation precision is\n  your choice unless the reference dictates otherwise.\n- Target GPU: NVIDIA A100 (compute capability 8.0).\n- Your kernel must be a drop-in replacement: same input shapes, same output\n  shapes and dtype as the reference.\n- Output ONLY the complete PTX solution inside a single code block.\n  No explanation outside the code block.\n\nWrite the complete kernel in raw PTX ISA (.target sm_80). Provide:\n(1) the PTX module as a Python string constant, and\n(2) a ModelNew class that loads it via the provided ptx_harness API:\n    module = ptx_load(PTX_SOURCE); ptx_launch(module, \"kernel_name\", grid, block, args).\nThe harness handles module loading; you write only the PTX and launch parameters.\n\nReference implementation:\n```python\nimport torch\nimport torch.nn as nn\n\nclass Model(nn.Module):\n    \"\"\"\n    Simple model that performs a Swish activation.\n    \"\"\"\n    def __init__(self):\n        super(Model, self).__init__()\n    \n    def forward(self, x: torch.Tensor) -> torch.Tensor:\n        \"\"\"\n        Applies Swish activation to the input tensor.\n\n        Args:\n            x (torch.Tensor): Input tensor of any shape.\n\n        Returns:\n            torch.Tensor: Output tensor with Swish applied, same shape as input.\n        \"\"\"\n        return x * torch.sigmoid(x)\n\nbatch_size = 4096\ndim = 393216\n\ndef get_inputs():\n    x = torch.rand(batch_size, dim)\n    return [x]\n\ndef get_init_inputs():\n    return []  # No special initialization inputs needed\n```\n",
+  "env": {
+    "torch_version": "2.5.1+cu121",
+    "cuda_version": "12.1",
+    "gpu_name": "NVIDIA A100 80GB PCIe",
+    "compute_capability": [
+      8,
+      0
+    ],
+    "driver_version": "535.309.01\n535.309.01"
+  },
+  "response_raw": "```python\nPTX_SOURCE = \"\"\"\n.version 7.5\n.target sm_80\n.address_size 64\n\n.visible .entry _Z13swish_kernelPFPKfS0_Ei(\n    .param .u64 _Z13swish_kernelPFPKfS0_Ei_ptr,\n    .param .u64 _Z13swish_kernelPFPKfS0_Ei_size\n)\n{\n    .reg .b32  %r<4>;\n    .reg .b64  %rd<4>;\n    .reg .f16  %f<4>;\n    .reg .b16  %h<4>;\n    .reg .b32  %c<4>;\n    .reg .b64  %d<4>;\n\n    // Load parameters\n    ld.param.u64  %rd1, [_Z13swish_kernelPFPKfS0_Ei_ptr];\n    ld.param.u32  %r1, [_Z13swish_kernelPFPKfS0_Ei_size];\n\n    // Setup thread indices\n    mov.u32  %r2, %tid.x;\n    mov.u32  %r3, %ctaid.x;\n    mul.wide.u32  %rd2, %r3, %r1;\n    add.s32  %r4, %r2, %rd2;\n\n    // Check bounds\n    setp.ge.s32  %p1, %r4, %r1;\n    @%p1  bra.uni  LBB0_2;\n\n    // Load input value\n    ld.global.f16  %f1, [%rd1 + %r4];\n\n    // Compute sigmoid: 1 / (1 + exp(-x))\n    neg.f16  %f2, %f1;\n    ex2.approx.f16  %f3, %f2;\n    add.f16  %f4, %f3, 0h3C00;  // 1.0 in fp16\n    div.rn.f16  %f2, 0h3C00, %f4;  // 1.0 / (1.0 + exp(-x))\n\n    // Multiply input by sigmoid result\n    mul.rn.f16  %f1, %f1, %f2;\n\n    // Store result back\n    st.global.f16  [%rd1 + %r4], %f1;\n\nLBB0_2:\n    ret;\n}\n\"\"\"\n\nclass ModelNew:\n    def __init__(self):\n        self.ptx_module = None\n        self.kernel_name = \"_Z13swish_kernelPFPKfS0_Ei\"\n        \n    def forward(self, x):\n        import torch\n        from ptx_harness import ptx_load, ptx_launch\n        \n        if self.ptx_module is None:\n            self.ptx_module = ptx_load(PTX_SOURCE)\n            \n        # Ensure input is contiguous and on GPU\n        x = x.contiguous().cuda().half()\n        \n        # Get size for kernel launch\n        size = x.numel()\n        \n        # Prepare arguments\n        args = [\n            x.data_ptr(),  # pointer to input tensor\n            size           # total number of elements\n        ]\n        \n        # Launch kernel with appropriate grid/block dimensions\n        block = (256, 1, 1)\n        grid = ((size + block[0] - 1) // block[0], 1, 1)\n        \n        ptx_launch(self.ptx_module, self.kernel_name, grid, block, args)\n        \n        return x\n```",
+  "response_finish_reason": "stop",
+  "usage": {
+    "completion_tokens": 793,
+    "prompt_tokens": 399,
+    "total_tokens": 1192,
+    "completion_tokens_details": null,
+    "prompt_tokens_details": null
+  },
+  "parsed_code": "PTX_SOURCE = \"\"\"\n.version 7.5\n.target sm_80\n.address_size 64\n\n.visible .entry _Z13swish_kernelPFPKfS0_Ei(\n    .param .u64 _Z13swish_kernelPFPKfS0_Ei_ptr,\n    .param .u64 _Z13swish_kernelPFPKfS0_Ei_size\n)\n{\n    .reg .b32  %r<4>;\n    .reg .b64  %rd<4>;\n    .reg .f16  %f<4>;\n    .reg .b16  %h<4>;\n    .reg .b32  %c<4>;\n    .reg .b64  %d<4>;\n\n    // Load parameters\n    ld.param.u64  %rd1, [_Z13swish_kernelPFPKfS0_Ei_ptr];\n    ld.param.u32  %r1, [_Z13swish_kernelPFPKfS0_Ei_size];\n\n    // Setup thread indices\n    mov.u32  %r2, %tid.x;\n    mov.u32  %r3, %ctaid.x;\n    mul.wide.u32  %rd2, %r3, %r1;\n    add.s32  %r4, %r2, %rd2;\n\n    // Check bounds\n    setp.ge.s32  %p1, %r4, %r1;\n    @%p1  bra.uni  LBB0_2;\n\n    // Load input value\n    ld.global.f16  %f1, [%rd1 + %r4];\n\n    // Compute sigmoid: 1 / (1 + exp(-x))\n    neg.f16  %f2, %f1;\n    ex2.approx.f16  %f3, %f2;\n    add.f16  %f4, %f3, 0h3C00;  // 1.0 in fp16\n    div.rn.f16  %f2, 0h3C00, %f4;  // 1.0 / (1.0 + exp(-x))\n\n    // Multiply input by sigmoid result\n    mul.rn.f16  %f1, %f1, %f2;\n\n    // Store result back\n    st.global.f16  [%rd1 + %r4], %f1;\n\nLBB0_2:\n    ret;\n}\n\"\"\"\n\nclass ModelNew:\n    def __init__(self):\n        self.ptx_module = None\n        self.kernel_name = \"_Z13swish_kernelPFPKfS0_Ei\"\n        \n    def forward(self, x):\n        import torch\n        from ptx_harness import ptx_load, ptx_launch\n        \n        if self.ptx_module is None:\n            self.ptx_module = ptx_load(PTX_SOURCE)\n            \n        # Ensure input is contiguous and on GPU\n        x = x.contiguous().cuda().half()\n        \n        # Get size for kernel launch\n        size = x.numel()\n        \n        # Prepare arguments\n        args = [\n            x.data_ptr(),  # pointer to input tensor\n            size           # total number of elements\n        ]\n        \n        # Launch kernel with appropriate grid/block dimensions\n        block = (256, 1, 1)\n        grid = ((size + block[0] - 1) // block[0], 1, 1)\n        \n        ptx_launch(self.ptx_module, self.kernel_name, grid, block, args)\n        \n        return x\n",
+  "status": "generated"
+}

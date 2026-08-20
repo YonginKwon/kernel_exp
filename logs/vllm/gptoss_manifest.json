@@ -1,0 +1,15 @@
+{
+  "name": "gptoss",
+  "hf_repo": "openai/gpt-oss-120b",
+  "hf_revision": "b5c939de8f754692c1647ca79fbf85e8c1e70f8a",
+  "vllm_version": "0.10.1",
+  "port": 8000,
+  "tensor_parallel_size": 1,
+  "gpu_model": "NVIDIA A100 80GB PCIe",
+  "cuda_visible_devices": "0",
+  "downgraded": false,
+  "downgrade_reason": "",
+  "max_model_len_override": "32768",
+  "base_url": "http://localhost:8000/v1",
+  "started_at": "2026-08-20T06:45:03+09:00"
+}

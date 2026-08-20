@@ -1,0 +1,39 @@
+{
+  "task": "94_MSELoss",
+  "task_family": "loss",
+  "language": "ptx",
+  "condition": "0shot",
+  "sample_index": 0,
+  "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+  "base_url": "http://localhost:8001/v1",
+  "hf_revision": "b2cff646eb4bb1d68355c01b18ae02e7cf42d120",
+  "vllm_version": "0.10.1",
+  "tensor_parallel_size": 1,
+  "temperature": 0.8,
+  "max_tokens": 8192,
+  "seed": 6000,
+  "timestamp": "2026-08-20T09:25:25+0900",
+  "prompt_sha256": "46799b9980b12fe0c594884413c4b095f1b24ab3795092c506e933ea40a6501f",
+  "prompt": "You are given a PyTorch reference implementation of a neural network operator.\nWrite a functionally equivalent GPU kernel in PTX.\n\nRequirements:\n- All tensor inputs and outputs are float16 (fp16). Accumulation precision is\n  your choice unless the reference dictates otherwise.\n- Target GPU: NVIDIA A100 (compute capability 8.0).\n- Your kernel must be a drop-in replacement: same input shapes, same output\n  shapes and dtype as the reference.\n- Output ONLY the complete PTX solution inside a single code block.\n  No explanation outside the code block.\n\nWrite the complete kernel in raw PTX ISA (.target sm_80). Provide:\n(1) the PTX module as a Python string constant, and\n(2) a ModelNew class that loads it via the provided ptx_harness API:\n    module = ptx_load(PTX_SOURCE); ptx_launch(module, \"kernel_name\", grid, block, args).\nThe harness handles module loading; you write only the PTX and launch parameters.\n\nReference implementation:\n```python\nimport torch\nimport torch.nn as nn\n\nclass Model(nn.Module):\n    \"\"\"\n    A model that computes the Mean Squared Error loss for regression tasks.\n\n    Parameters:\n        None\n    \"\"\"\n    def __init__(self):\n        super(Model, self).__init__()\n\n    def forward(self, predictions, targets):\n        return torch.mean((predictions - targets) ** 2)\n\nbatch_size = 32768\ninput_shape = (32768,)\ndim = 1\n\ndef get_inputs():\n    scale = torch.rand(())\n    return [torch.rand(batch_size, *input_shape)*scale, torch.rand(batch_size, *input_shape)]\n\ndef get_init_inputs():\n    return []\n\n```\n",
+  "env": {
+    "torch_version": "2.5.1+cu121",
+    "cuda_version": "12.1",
+    "gpu_name": "NVIDIA A100 80GB PCIe",
+    "compute_capability": [
+      8,
+      0
+    ],
+    "driver_version": "535.309.01\n535.309.01"
+  },
+  "response_raw": "```python\nPTX_SOURCE = \"\"\"\n.version 7.5\n.target sm_80\n.address_size 64\n\n.visible .entry _Z13mse_kernel_f16PfS0_S0_i(\n    .param ._u64 _Z13mse_kernel_f16PfS0_S0_i_ptr,\n    .param ._u64 _Z13mse_kernel_f16PfS0_S0_i_ptr_1,\n    .param ._u64 _Z13mse_kernel_f16PfS0_S0_i_ptr_2,\n    .param ._u32 _Z13mse_kernel_f16PfS0_S0_i_num_elements\n)\n{\n    .reg .b32  %r<4>;\n    .reg .b64  %rd<4>;\n    .reg .f16  %f<8>;\n    .reg .b32  %c<4>;\n    .reg .b64  %rd2<4>;\n\n    mov.u64     %rd1, %param._Z13mse_kernel_f16PfS0_S0_i_ptr;\n    mov.u64     %rd2, %param._Z13mse_kernel_f16PfS0_S0_i_ptr_1;\n    mov.u64     %rd3, %param._Z13mse_kernel_f16PfS0_S0_i_ptr_2;\n    mov.u32     %r1, %param._Z13mse_kernel_f16PfS0_S0_i_num_elements;\n\n    mov.u32     %r2, 0;\n    mov.f16     %f1, 0.0f;\n    mov.f16     %f2, 0.0f;\n\n    .loc 1 14 1\n    .align 32\n    loop:\n        .loc 1 14 1\n        setp.lt.u32 %p1, %r2, %r1;\n        @%p1 bra.uni loop_end;\n\n        .loc 1 14 1\n        ld.global.f16 %f3, [%rd1 + %r2*2];\n        ld.global.f16 %f4, [%rd2 + %r2*2];\n        \n        sub.f16 %f5, %f3, %f4;\n        mul.f16 %f6, %f5, %f5;\n        add.f16 %f1, %f1, %f6;\n\n        add.s32 %r2, %r2, 1;\n        bra.uni loop;\n\n    loop_end:\n        mov.f16 %f2, %f1;\n        cvt.rn.f16.f32 %f7, %f2;\n        mul.f16 %f2, %f7, 0.000030518f; // 1/32768 = 1/2^15\n        \n        st.global.f16 [%rd3], %f2;\n        \n        ret;\n}\n\"\"\"\n\nclass ModelNew:\n    def __init__(self):\n        self.module = None\n        self.kernel_name = \"_Z13mse_kernel_f16PfS0_S0_i\"\n    \n    def forward(self, predictions, targets):\n        import torch\n        from ptx_harness import ptx_load, ptx_launch\n        \n        if self.module is None:\n            self.module = ptx_load(PTX_SOURCE)\n            \n        batch_size = predictions.shape[0]\n        result = torch.empty((), dtype=torch.float16, device=predictions.device)\n        \n        # Prepare arguments for kernel launch\n        args = [\n            predictions.data_ptr(),\n            targets.data_ptr(),\n            result.data_ptr(),\n            batch_size\n        ]\n        \n        # Launch kernel with appropriate grid/block dimensions\n        block = (256, 1, 1)\n        grid = ((batch_size + block[0] - 1) // block[0], 1, 1)\n        \n        ptx_launch(self.module, self.kernel_name, grid, block, args)\n        \n        return result\n```",
+  "response_finish_reason": "stop",
+  "usage": {
+    "completion_tokens": 901,
+    "prompt_tokens": 373,
+    "total_tokens": 1274,
+    "completion_tokens_details": null,
+    "prompt_tokens_details": null
+  },
+  "parsed_code": "PTX_SOURCE = \"\"\"\n.version 7.5\n.target sm_80\n.address_size 64\n\n.visible .entry _Z13mse_kernel_f16PfS0_S0_i(\n    .param ._u64 _Z13mse_kernel_f16PfS0_S0_i_ptr,\n    .param ._u64 _Z13mse_kernel_f16PfS0_S0_i_ptr_1,\n    .param ._u64 _Z13mse_kernel_f16PfS0_S0_i_ptr_2,\n    .param ._u32 _Z13mse_kernel_f16PfS0_S0_i_num_elements\n)\n{\n    .reg .b32  %r<4>;\n    .reg .b64  %rd<4>;\n    .reg .f16  %f<8>;\n    .reg .b32  %c<4>;\n    .reg .b64  %rd2<4>;\n\n    mov.u64     %rd1, %param._Z13mse_kernel_f16PfS0_S0_i_ptr;\n    mov.u64     %rd2, %param._Z13mse_kernel_f16PfS0_S0_i_ptr_1;\n    mov.u64     %rd3, %param._Z13mse_kernel_f16PfS0_S0_i_ptr_2;\n    mov.u32     %r1, %param._Z13mse_kernel_f16PfS0_S0_i_num_elements;\n\n    mov.u32     %r2, 0;\n    mov.f16     %f1, 0.0f;\n    mov.f16     %f2, 0.0f;\n\n    .loc 1 14 1\n    .align 32\n    loop:\n        .loc 1 14 1\n        setp.lt.u32 %p1, %r2, %r1;\n        @%p1 bra.uni loop_end;\n\n        .loc 1 14 1\n        ld.global.f16 %f3, [%rd1 + %r2*2];\n        ld.global.f16 %f4, [%rd2 + %r2*2];\n        \n        sub.f16 %f5, %f3, %f4;\n        mul.f16 %f6, %f5, %f5;\n        add.f16 %f1, %f1, %f6;\n\n        add.s32 %r2, %r2, 1;\n        bra.uni loop;\n\n    loop_end:\n        mov.f16 %f2, %f1;\n        cvt.rn.f16.f32 %f7, %f2;\n        mul.f16 %f2, %f7, 0.000030518f; // 1/32768 = 1/2^15\n        \n        st.global.f16 [%rd3], %f2;\n        \n        ret;\n}\n\"\"\"\n\nclass ModelNew:\n    def __init__(self):\n        self.module = None\n        self.kernel_name = \"_Z13mse_kernel_f16PfS0_S0_i\"\n    \n    def forward(self, predictions, targets):\n        import torch\n        from ptx_harness import ptx_load, ptx_launch\n        \n        if self.module is None:\n            self.module = ptx_load(PTX_SOURCE)\n            \n        batch_size = predictions.shape[0]\n        result = torch.empty((), dtype=torch.float16, device=predictions.device)\n        \n        # Prepare arguments for kernel launch\n        args = [\n            predictions.data_ptr(),\n            targets.data_ptr(),\n            result.data_ptr(),\n            batch_size\n        ]\n        \n        # Launch kernel with appropriate grid/block dimensions\n        block = (256, 1, 1)\n        grid = ((batch_size + block[0] - 1) // block[0], 1, 1)\n        \n        ptx_launch(self.module, self.kernel_name, grid, block, args)\n        \n        return result\n",
+  "status": "generated"
+}

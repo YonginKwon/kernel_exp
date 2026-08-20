@@ -1,0 +1,39 @@
+{
+  "task": "90_cumprod",
+  "task_family": "cumulative_scan",
+  "language": "triton",
+  "condition": "0shot",
+  "sample_index": 0,
+  "model": "openai/gpt-oss-120b",
+  "base_url": "http://localhost:8000/v1",
+  "hf_revision": "b5c939de8f754692c1647ca79fbf85e8c1e70f8a",
+  "vllm_version": "0.10.1",
+  "tensor_parallel_size": 1,
+  "temperature": 0.8,
+  "max_tokens": 8192,
+  "seed": 2000,
+  "timestamp": "2026-08-20T07:28:40+0900",
+  "prompt_sha256": "6a8001197c6f67f2079650d7aaee66e7941fdb01f24121619a1304edd4e463b0",
+  "prompt": "You are given a PyTorch reference implementation of a neural network operator.\nWrite a functionally equivalent GPU kernel in Triton.\n\nRequirements:\n- All tensor inputs and outputs are float16 (fp16). Accumulation precision is\n  your choice unless the reference dictates otherwise.\n- Target GPU: NVIDIA A100 (compute capability 8.0).\n- Your kernel must be a drop-in replacement: same input shapes, same output\n  shapes and dtype as the reference.\n- Output ONLY the complete Triton solution inside a single code block.\n  No explanation outside the code block.\n\nWrite a Triton kernel (triton.jit) with a Python wrapper. Provide the full\nPython file defining ModelNew that calls your Triton kernel.\n\nReference implementation:\n```python\nimport torch\nimport torch.nn as nn\n\nclass Model(nn.Module):\n    \"\"\"\n    A model that performs a cumulative product operation along a specified dimension.\n\n    Parameters:\n        dim (int): The dimension along which to perform the cumulative product operation.\n    \"\"\"\n\n    def __init__(self, dim):\n        \"\"\"\n        Initialize the CumulativeProductModel.\n\n        Args:\n            dim (int): The dimension along which to perform the cumulative product.\n        \"\"\"\n        super(Model, self).__init__()\n        self.dim = dim\n\n    def forward(self, x):\n        \"\"\"\n        Forward pass, computing the cumulative product along the specified dimension.\n\n        Args:\n            x (torch.Tensor): Input tensor of shape (batch_size, *input_shape).\n\n        Returns:\n            torch.Tensor: Tensor of the same shape as `x` after applying cumulative product along `dim`.\n        \"\"\"\n        return torch.cumprod(x, dim=self.dim)\n\n# Define input dimensions and parameters\nbatch_size = 32768\ninput_shape = (32768,)\ndim = 1\n\ndef get_inputs():\n    return [torch.rand(batch_size, *input_shape)]\n\ndef get_init_inputs():\n    return [dim]\n\n```\n",
+  "env": {
+    "torch_version": "2.5.1+cu121",
+    "cuda_version": "12.1",
+    "gpu_name": "NVIDIA A100 80GB PCIe",
+    "compute_capability": [
+      8,
+      0
+    ],
+    "driver_version": "535.309.01\n535.309.01"
+  },
+  "response_raw": "```python\nimport torch\nimport torch.nn as nn\nimport triton\nimport triton.language as tl\n\n\n@triton.jit\ndef _cumprod_kernel(\n    X_ptr,                     # *fp16\n    Y_ptr,                     # *fp16\n    dim_size: tl.constexpr,    # size of the reduction dimension\n    inner_stride: tl.constexpr # product of dimensions after `dim`\n):\n    pid = tl.program_id(0)                     # row index (outer * inner)\n    # compute outer and inner indices\n    outer_idx = pid // inner_stride\n    inner_idx = pid % inner_stride\n    # base offset for this row\n    base_offset = outer_idx * dim_size * inner_stride + inner_idx\n\n    prod = tl.full([1], 1.0, dtype=tl.float32)  # accumulation in fp32\n    i = 0\n    while i < dim_size:\n        off = base_offset + i * inner_stride\n        x = tl.load(X_ptr + off, mask=True, other=1.0).to(tl.float32)\n        prod = prod * x\n        tl.store(Y_ptr + off, prod.to(tl.float16))\n        i += 1\n\n\ndef _triton_cumprod(x: torch.Tensor, dim: int) -> torch.Tensor:\n    \"\"\"\n    Triton implementation of torch.cumprod for fp16 tensors.\n    Only supports contiguous inputs.\n    \"\"\"\n    assert x.is_contiguous(), \"Input must be contiguous\"\n    assert x.dtype == torch.float16, \"Only fp16 supported\"\n    dim = dim if dim >= 0 else dim + x.dim()\n    # compute sizes of outer, dim, inner dimensions\n    outer = 1\n    for s in x.shape[:dim]:\n        outer *= s\n    inner = 1\n    for s in x.shape[dim + 1 :]:\n        inner *= s\n    dim_size = x.shape[dim]\n\n    total_rows = outer * inner\n    grid = (total_rows,)\n\n    y = torch.empty_like(x)\n    _cumprod_kernel[grid](\n        x,\n        y,\n        dim_size,\n        inner,\n        num_warps=4,\n    )\n    return y\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    Drop\u2011in replacement for the reference Model using a Triton kernel.\n    \"\"\"\n\n    def __init__(self, dim: int):\n        super().__init__()\n        self.dim = dim\n\n    def forward(self, x: torch.Tensor) -> torch.Tensor:\n        return _triton_cumprod(x, self.dim)\n\n\n# Helper functions matching the reference API\ndef get_inputs():\n    batch_size = 32768\n    input_shape = (32768,)\n    return [torch.rand(batch_size, *input_shape, dtype=torch.float16, device=\"cuda\")]\n\n\ndef get_init_inputs():\n    dim = 1\n    return [dim]\n```",
+  "response_finish_reason": "stop",
+  "usage": {
+    "completion_tokens": 2419,
+    "prompt_tokens": 465,
+    "total_tokens": 2884,
+    "completion_tokens_details": null,
+    "prompt_tokens_details": null
+  },
+  "parsed_code": "import torch\nimport torch.nn as nn\nimport triton\nimport triton.language as tl\n\n\n@triton.jit\ndef _cumprod_kernel(\n    X_ptr,                     # *fp16\n    Y_ptr,                     # *fp16\n    dim_size: tl.constexpr,    # size of the reduction dimension\n    inner_stride: tl.constexpr # product of dimensions after `dim`\n):\n    pid = tl.program_id(0)                     # row index (outer * inner)\n    # compute outer and inner indices\n    outer_idx = pid // inner_stride\n    inner_idx = pid % inner_stride\n    # base offset for this row\n    base_offset = outer_idx * dim_size * inner_stride + inner_idx\n\n    prod = tl.full([1], 1.0, dtype=tl.float32)  # accumulation in fp32\n    i = 0\n    while i < dim_size:\n        off = base_offset + i * inner_stride\n        x = tl.load(X_ptr + off, mask=True, other=1.0).to(tl.float32)\n        prod = prod * x\n        tl.store(Y_ptr + off, prod.to(tl.float16))\n        i += 1\n\n\ndef _triton_cumprod(x: torch.Tensor, dim: int) -> torch.Tensor:\n    \"\"\"\n    Triton implementation of torch.cumprod for fp16 tensors.\n    Only supports contiguous inputs.\n    \"\"\"\n    assert x.is_contiguous(), \"Input must be contiguous\"\n    assert x.dtype == torch.float16, \"Only fp16 supported\"\n    dim = dim if dim >= 0 else dim + x.dim()\n    # compute sizes of outer, dim, inner dimensions\n    outer = 1\n    for s in x.shape[:dim]:\n        outer *= s\n    inner = 1\n    for s in x.shape[dim + 1 :]:\n        inner *= s\n    dim_size = x.shape[dim]\n\n    total_rows = outer * inner\n    grid = (total_rows,)\n\n    y = torch.empty_like(x)\n    _cumprod_kernel[grid](\n        x,\n        y,\n        dim_size,\n        inner,\n        num_warps=4,\n    )\n    return y\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    Drop\u2011in replacement for the reference Model using a Triton kernel.\n    \"\"\"\n\n    def __init__(self, dim: int):\n        super().__init__()\n        self.dim = dim\n\n    def forward(self, x: torch.Tensor) -> torch.Tensor:\n        return _triton_cumprod(x, self.dim)\n\n\n# Helper functions matching the reference API\ndef get_inputs():\n    batch_size = 32768\n    input_shape = (32768,)\n    return [torch.rand(batch_size, *input_shape, dtype=torch.float16, device=\"cuda\")]\n\n\ndef get_init_inputs():\n    dim = 1\n    return [dim]\n",
+  "status": "generated"
+}

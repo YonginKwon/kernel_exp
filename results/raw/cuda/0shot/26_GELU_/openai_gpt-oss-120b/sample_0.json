@@ -1,0 +1,39 @@
+{
+  "task": "26_GELU_",
+  "task_family": "elementwise_activation",
+  "language": "cuda",
+  "condition": "0shot",
+  "sample_index": 0,
+  "model": "openai/gpt-oss-120b",
+  "base_url": "http://localhost:8000/v1",
+  "hf_revision": "b5c939de8f754692c1647ca79fbf85e8c1e70f8a",
+  "vllm_version": "0.10.1",
+  "tensor_parallel_size": 1,
+  "temperature": 0.8,
+  "max_tokens": 8192,
+  "seed": 1000,
+  "timestamp": "2026-08-20T06:53:03+0900",
+  "prompt_sha256": "af95009178da3b87701ccb31957a9e983b50e43c1a65a8afc3706c2cf30ab2e9",
+  "prompt": "You are given a PyTorch reference implementation of a neural network operator.\nWrite a functionally equivalent GPU kernel in CUDA.\n\nRequirements:\n- All tensor inputs and outputs are float16 (fp16). Accumulation precision is\n  your choice unless the reference dictates otherwise.\n- Target GPU: NVIDIA A100 (compute capability 8.0).\n- Your kernel must be a drop-in replacement: same input shapes, same output\n  shapes and dtype as the reference.\n- Output ONLY the complete CUDA solution inside a single code block.\n  No explanation outside the code block.\n\nWrite CUDA C++ using inline PyTorch extension conventions\n(torch.utils.cpp_extension.load_inline). Provide the full Python file\ndefining ModelNew that compiles and launches your CUDA kernel.\nDo not pass a -std= (C++ standard) flag in extra_cflags or\nextra_cuda_cflags; the harness supplies the required C++ standard\nuniformly and overrides any you provide.\n\nReference implementation:\n```python\nimport torch\nimport torch.nn as nn\n\nclass Model(nn.Module):\n    \"\"\"\n    Simple model that performs a GELU activation.\n    \"\"\"\n    def __init__(self):\n        super(Model, self).__init__()\n    \n    def forward(self, x: torch.Tensor) -> torch.Tensor:\n        \"\"\"\n        Applies GELU activation to the input tensor.\n\n        Args:\n            x (torch.Tensor): Input tensor of any shape.\n\n        Returns:\n            torch.Tensor: Output tensor with GELU applied, same shape as input.\n        \"\"\"\n        return torch.nn.functional.gelu(x)\n\nbatch_size = 4096\ndim = 393216\n\ndef get_inputs():\n    x = torch.rand(batch_size, dim)\n    return [x]\n\ndef get_init_inputs():\n    return []  # No special initialization inputs needed\n```\n",
+  "env": {
+    "torch_version": "2.5.1+cu121",
+    "cuda_version": "12.1",
+    "gpu_name": "NVIDIA A100 80GB PCIe",
+    "compute_capability": [
+      8,
+      0
+    ],
+    "driver_version": "535.309.01\n535.309.01"
+  },
+  "response_raw": "```python\nimport torch\nimport torch.nn as nn\nfrom torch.utils.cpp_extension import load_inline\n\n# CUDA source implementing exact GELU for float16 tensors\n_cuda_src = r'''\n#include <torch/extension.h>\n#include <cuda.h>\n#include <cuda_runtime.h>\n#include <cuda_fp16.h>\n#include <cmath>\n\n__global__ void gelu_fp16_kernel(const __half* __restrict__ input,\n                                 __half* __restrict__ output,\n                                 size_t N) {\n    size_t idx = blockIdx.x * blockDim.x + threadIdx.x;\n    if (idx < N) {\n        float x = __half2float(input[idx]);\n        const float sqrt_2 = 1.4142135623730951f;  // sqrt(2)\n        float y = 0.5f * x * (1.0f + erff(x / sqrt_2));\n        output[idx] = __float2half(y);\n    }\n}\n\ntorch::Tensor gelu_fp16(torch::Tensor input) {\n    TORCH_CHECK(input.is_cuda(), \"input must be a CUDA tensor\");\n    TORCH_CHECK(input.dtype() == torch::kHalf, \"input must be float16\");\n    auto output = torch::empty_like(input);\n    size_t N = input.numel();\n\n    const int threads = 256;\n    const int blocks = (N + threads - 1) / threads;\n\n    gelu_fp16_kernel<<<blocks, threads>>>(\n        reinterpret_cast<const __half*>(input.data_ptr()),\n        reinterpret_cast<__half*>(output.data_ptr()),\n        N);\n    AT_CUDA_CHECK(cudaGetLastError());\n\n    return output;\n}\n\nPYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {\n    m.def(\"gelu_fp16\", &gelu_fp16, \"Exact GELU for float16 tensors (CUDA)\");\n}\n'''\n\n# Compile the inline extension\ngelu_mod = load_inline(name='gelu_fp16_mod',\n                       cpp_sources='',\n                       cuda_sources=_cuda_src,\n                       functions=['gelu_fp16'],\n                       verbose=False)\n\ndef _gelu_fp16(x: torch.Tensor) -> torch.Tensor:\n    return gelu_mod.gelu_fp16(x)\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    Drop\u2011in replacement for the reference Model using a custom CUDA GELU kernel.\n    \"\"\"\n    def __init__(self):\n        super().__init__()\n\n    def forward(self, x: torch.Tensor) -> torch.Tensor:\n        return _gelu_fp16(x)\n```",
+  "response_finish_reason": "stop",
+  "usage": {
+    "completion_tokens": 1683,
+    "prompt_tokens": 435,
+    "total_tokens": 2118,
+    "completion_tokens_details": null,
+    "prompt_tokens_details": null
+  },
+  "parsed_code": "import torch\nimport torch.nn as nn\nfrom torch.utils.cpp_extension import load_inline\n\n# CUDA source implementing exact GELU for float16 tensors\n_cuda_src = r'''\n#include <torch/extension.h>\n#include <cuda.h>\n#include <cuda_runtime.h>\n#include <cuda_fp16.h>\n#include <cmath>\n\n__global__ void gelu_fp16_kernel(const __half* __restrict__ input,\n                                 __half* __restrict__ output,\n                                 size_t N) {\n    size_t idx = blockIdx.x * blockDim.x + threadIdx.x;\n    if (idx < N) {\n        float x = __half2float(input[idx]);\n        const float sqrt_2 = 1.4142135623730951f;  // sqrt(2)\n        float y = 0.5f * x * (1.0f + erff(x / sqrt_2));\n        output[idx] = __float2half(y);\n    }\n}\n\ntorch::Tensor gelu_fp16(torch::Tensor input) {\n    TORCH_CHECK(input.is_cuda(), \"input must be a CUDA tensor\");\n    TORCH_CHECK(input.dtype() == torch::kHalf, \"input must be float16\");\n    auto output = torch::empty_like(input);\n    size_t N = input.numel();\n\n    const int threads = 256;\n    const int blocks = (N + threads - 1) / threads;\n\n    gelu_fp16_kernel<<<blocks, threads>>>(\n        reinterpret_cast<const __half*>(input.data_ptr()),\n        reinterpret_cast<__half*>(output.data_ptr()),\n        N);\n    AT_CUDA_CHECK(cudaGetLastError());\n\n    return output;\n}\n\nPYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {\n    m.def(\"gelu_fp16\", &gelu_fp16, \"Exact GELU for float16 tensors (CUDA)\");\n}\n'''\n\n# Compile the inline extension\ngelu_mod = load_inline(name='gelu_fp16_mod',\n                       cpp_sources='',\n                       cuda_sources=_cuda_src,\n                       functions=['gelu_fp16'],\n                       verbose=False)\n\ndef _gelu_fp16(x: torch.Tensor) -> torch.Tensor:\n    return gelu_mod.gelu_fp16(x)\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    Drop\u2011in replacement for the reference Model using a custom CUDA GELU kernel.\n    \"\"\"\n    def __init__(self):\n        super().__init__()\n\n    def forward(self, x: torch.Tensor) -> torch.Tensor:\n        return _gelu_fp16(x)\n",
+  "status": "generated"
+}

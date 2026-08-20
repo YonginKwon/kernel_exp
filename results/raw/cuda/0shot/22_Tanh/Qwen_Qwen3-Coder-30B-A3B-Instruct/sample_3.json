@@ -1,0 +1,39 @@
+{
+  "task": "22_Tanh",
+  "task_family": "elementwise_activation",
+  "language": "cuda",
+  "condition": "0shot",
+  "sample_index": 3,
+  "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+  "base_url": "http://localhost:8001/v1",
+  "hf_revision": "b2cff646eb4bb1d68355c01b18ae02e7cf42d120",
+  "vllm_version": "0.10.1",
+  "tensor_parallel_size": 1,
+  "temperature": 0.8,
+  "max_tokens": 8192,
+  "seed": 4003,
+  "timestamp": "2026-08-20T08:20:08+0900",
+  "prompt_sha256": "ca7861921096e20a8235a6b7d1955ca082f6c931281c068dd42e080573839bda",
+  "prompt": "You are given a PyTorch reference implementation of a neural network operator.\nWrite a functionally equivalent GPU kernel in CUDA.\n\nRequirements:\n- All tensor inputs and outputs are float16 (fp16). Accumulation precision is\n  your choice unless the reference dictates otherwise.\n- Target GPU: NVIDIA A100 (compute capability 8.0).\n- Your kernel must be a drop-in replacement: same input shapes, same output\n  shapes and dtype as the reference.\n- Output ONLY the complete CUDA solution inside a single code block.\n  No explanation outside the code block.\n\nWrite CUDA C++ using inline PyTorch extension conventions\n(torch.utils.cpp_extension.load_inline). Provide the full Python file\ndefining ModelNew that compiles and launches your CUDA kernel.\nDo not pass a -std= (C++ standard) flag in extra_cflags or\nextra_cuda_cflags; the harness supplies the required C++ standard\nuniformly and overrides any you provide.\n\nReference implementation:\n```python\nimport torch\nimport torch.nn as nn\n\nclass Model(nn.Module):\n    \"\"\"\n    Simple model that performs a Tanh activation.\n    \"\"\"\n    def __init__(self):\n        super(Model, self).__init__()\n    \n    def forward(self, x: torch.Tensor) -> torch.Tensor:\n        \"\"\"\n        Applies Tanh activation to the input tensor.\n\n        Args:\n            x (torch.Tensor): Input tensor of any shape.\n\n        Returns:\n            torch.Tensor: Output tensor with Tanh applied, same shape as input.\n        \"\"\"\n        return torch.tanh(x)\n\nbatch_size = 4096\ndim = 393216\n\ndef get_inputs():\n    x = torch.rand(batch_size, dim)\n    return [x]\n\ndef get_init_inputs():\n    return []  # No special initialization inputs needed\n```\n",
+  "env": {
+    "torch_version": "2.5.1+cu121",
+    "cuda_version": "12.1",
+    "gpu_name": "NVIDIA A100 80GB PCIe",
+    "compute_capability": [
+      8,
+      0
+    ],
+    "driver_version": "535.309.01\n535.309.01"
+  },
+  "response_raw": "```python\nimport torch\nfrom torch.utils.cpp_extension import load_inline\n\n# CUDA kernel implementation\ncuda_source = \"\"\"\n#include <cuda_fp16.h>\n#include <cmath>\n\n__global__ void tanh_kernel(const half* input, half* output, int64_t total_elements) {\n    int64_t idx = blockIdx.x * blockDim.x + threadIdx.x;\n    \n    if (idx < total_elements) {\n        // Convert half to float for computation\n        float val = __half2float(input[idx]);\n        // Compute tanh\n        float result = tanhf(val);\n        // Convert back to half\n        output[idx] = __float2half(result);\n    }\n}\n\nvoid launch_tanh_kernel(const half* input, half* output, int64_t total_elements) {\n    const int block_size = 256;\n    const int grid_size = (total_elements + block_size - 1) / block_size;\n    \n    tanh_kernel<<<grid_size, block_size>>>(input, output, total_elements);\n}\n\"\"\"\n\n# Python wrapper\ndef compile_and_run():\n    # Load the CUDA extension\n    module = load_inline(\n        name=\"tanh_ext\",\n        cpp_sources=\"\",\n        cuda_sources=cuda_source,\n        functions=[\"launch_tanh_kernel\"],\n        verbose=True\n    )\n    \n    class ModelNew(torch.nn.Module):\n        def __init__(self):\n            super(ModelNew, self).__init__()\n        \n        def forward(self, x: torch.Tensor) -> torch.Tensor:\n            # Ensure input is float16\n            if x.dtype != torch.float16:\n                x = x.to(torch.float16)\n            \n            # Create output tensor\n            output = torch.empty_like(x)\n            \n            # Launch kernel\n            module.launch_tanh_kernel(\n                x.data_ptr(),\n                output.data_ptr(),\n                x.numel()\n            )\n            \n            return output\n    \n    return ModelNew\n\n# Create the model class\nModelNew = compile_and_run()\n\n# Test function\ndef get_inputs():\n    x = torch.rand(4096, 393216, dtype=torch.float16)\n    return [x]\n\ndef get_init_inputs():\n    return []\n```",
+  "response_finish_reason": "stop",
+  "usage": {
+    "completion_tokens": 455,
+    "prompt_tokens": 381,
+    "total_tokens": 836,
+    "completion_tokens_details": null,
+    "prompt_tokens_details": null
+  },
+  "parsed_code": "import torch\nfrom torch.utils.cpp_extension import load_inline\n\n# CUDA kernel implementation\ncuda_source = \"\"\"\n#include <cuda_fp16.h>\n#include <cmath>\n\n__global__ void tanh_kernel(const half* input, half* output, int64_t total_elements) {\n    int64_t idx = blockIdx.x * blockDim.x + threadIdx.x;\n    \n    if (idx < total_elements) {\n        // Convert half to float for computation\n        float val = __half2float(input[idx]);\n        // Compute tanh\n        float result = tanhf(val);\n        // Convert back to half\n        output[idx] = __float2half(result);\n    }\n}\n\nvoid launch_tanh_kernel(const half* input, half* output, int64_t total_elements) {\n    const int block_size = 256;\n    const int grid_size = (total_elements + block_size - 1) / block_size;\n    \n    tanh_kernel<<<grid_size, block_size>>>(input, output, total_elements);\n}\n\"\"\"\n\n# Python wrapper\ndef compile_and_run():\n    # Load the CUDA extension\n    module = load_inline(\n        name=\"tanh_ext\",\n        cpp_sources=\"\",\n        cuda_sources=cuda_source,\n        functions=[\"launch_tanh_kernel\"],\n        verbose=True\n    )\n    \n    class ModelNew(torch.nn.Module):\n        def __init__(self):\n            super(ModelNew, self).__init__()\n        \n        def forward(self, x: torch.Tensor) -> torch.Tensor:\n            # Ensure input is float16\n            if x.dtype != torch.float16:\n                x = x.to(torch.float16)\n            \n            # Create output tensor\n            output = torch.empty_like(x)\n            \n            # Launch kernel\n            module.launch_tanh_kernel(\n                x.data_ptr(),\n                output.data_ptr(),\n                x.numel()\n            )\n            \n            return output\n    \n    return ModelNew\n\n# Create the model class\nModelNew = compile_and_run()\n\n# Test function\ndef get_inputs():\n    x = torch.rand(4096, 393216, dtype=torch.float16)\n    return [x]\n\ndef get_init_inputs():\n    return []\n",
+  "status": "generated"
+}
