@@ -14,9 +14,16 @@
 **Qwen엔 TileLang만 돕고 CUDA·PTX는 오히려 0%로 붕괴**시킨다 — 모델 의존적
 효과로, H3("문서 주입이 LRPL 격차를 줄인다")를 단순 지지하지 않는다. **타이밍
 (speedup) 측정 완료(§7-1, 226/228)** — 정답 커널은 대체로 PyTorch eager보다
-느리다(geomean 0.2~0.8x, Qwen Triton만 예외적으로 빠른데 이 중 9건은 정확성
-판정 결함으로 인한 착시로 확인돼 제외 후 다시 계산하면 역시 0.5x대). **수리
-1턴(멀티턴) 프로토콜은 아직 실행되지 않았다** — 별도 착수 예정.
+느리다. **허용오차 감사 완료(§7-2): 37과제 중 5개(13.5%)가 fp16
+atol=rtol=1e-2 아래서 정확성 판정을 신뢰할 수 없다** — `23_Softmax`(출력이
+허용오차보다 4,000배 작음), `4_Matrix_vector_multiplication_`·
+`6_Matmul_with_large_K_dimension_`(참조 자체가 fp16 오버플로로 전 원소
+`inf`), `90_cumprod`(출력 다수가 0으로 언더플로), `95_CrossEntropyLoss`(참조
+loss가 fp16 오버플로). 이 중 3개가 이미 correct 표본 228건 중 42건(18.4%)에
+실제로 걸려 있어 speedup 집계에서 과제 단위로 대칭 제외했다(§7-1 정제값
+사용). **수리 1턴(멀티턴) 프로토콜은 아직 실행되지 않았다** — 착수 전
+PROMPT_SPEC §7에 이 5개 과제를 최적화 국면에서 제외하는 조치를 기록 예정
+(§7-3).
 
 ---
 
@@ -165,7 +172,7 @@ CUDA/PTX/TileLang 3개 언어 정답 0/1110.
 2000자 캡에 잘려 있어 아직 분류 불가**(2026-08-20 캡을 20000자로 올렸지만
 기존 레코드는 재생성 안 됨). 분류 가능했던 19건: fn-name-mismatch 8, 디바이스
 내장 오용 5, Python 문법 4, 기타 2. **논문에 "CUDA 오류 분류"를 언어 간
-비교표로 쓰려면 이 114건을 격리 재컴파일로 재수집해야 한다(§7 TODO 참고,
+비교표로 쓰려면 이 114건을 격리 재컴파일로 재수집해야 한다(§8 TODO 참고,
 방법은 CUDA 프로브 때와 동일 — 판정은 불변, 진단 텍스트만 재수집).**
 
 docinject 조건에서는 Qwen CUDA 81건 전부 온전한 진단 확보(캡 상향 이후 실행)
@@ -206,7 +213,7 @@ Qwen, 57/185=30.8%)은 별도 실패 범주 — max_tokens=8192 도달, 재생�
 
 Triton은 다른 3언어와 실패 프로파일이 질적으로 다르다 — compile_fail은
 28/370(7.6%)뿐, 나머지 실패는 **"컴파일은 통과했지만 결과가 틀림"**(259/370,
-70%). 세부 수치 오류 원인 분류는 아직 안 함 — §7 TODO.
+70%). 세부 수치 오류 원인 분류는 아직 안 함 — §8 TODO.
 
 ---
 
@@ -217,7 +224,7 @@ Triton은 다른 3언어와 실패 프로파일이 질적으로 다르다 — co
 | 08-19 | CUDA `-std=` 모델 지정 플래그 스트리핑(C++17 강제) | Qwen CUDA 51/185(27.6%)가 `-std=c++14` 직접 지정, 하니스 기본값과 충돌 | Qwen CUDA만, 재평가함 |
 | 08-19 | eval 샘플별 서브프로세스 격리 + 샘플 단위 체크포인트 | CUDA illegal-memory-access가 프로세스 전체를 오염시켜 1,480건 실행 유실한 사고 | 없음(안정성) |
 | 08-20 | `evaluate.py --resume` 추가 | 체크포인트 이어받기, 재평가 금지 | 없음 |
-| 08-20 | 컴파일 진단 로깅 캡 2000/4000→20000자 | 704건 중 197건이 진단 절단(모델 간 비대칭: gpt-oss CUDA 172/181 vs Qwen 25/124) | **없음(순수 로깅)** — 기존 절단분 재수집은 미완(§7 TODO) |
+| 08-20 | 컴파일 진단 로깅 캡 2000/4000→20000자 | 704건 중 197건이 진단 절단(모델 간 비대칭: gpt-oss CUDA 172/181 vs Qwen 25/124) | **없음(순수 로깅)** — 기존 절단분 재수집은 미완(§8 TODO) |
 | 08-20 | 닫히지 않은 코드펜스 허용 — **검토 후 기각** | 1.6%(3/185) 구제 대비 사전 등록 프로토콜 변경 비용이 큼 | 없음(변경 안 함) |
 | 08-20 | `doc_ablation_subset_of_20` 승인 | PI 조건부 사전 승인(Triton 정답 확인 + gpt-oss CUDA 판정 종결) 충족, 층화 재검증(전 계열 5%p 이내) | 없음(과제 선정만) |
 
@@ -238,47 +245,170 @@ GPU에서 새로 재측정(캐시/문헌 수치 재사용 없음). 결과 파일
 attention). 측정치 없이 데이터에서 결측으로 남김, 판정(compiled/correctness)은
 불변.
 
-| lang | model | condition | n | fast_1 | speedup geomean | excessive(>10x) flagged |
-|---|---|---|---:|---:|---:|---:|
-| cuda | gpt-oss-120b | docinject | 47 | 8 (17.0%) | 0.249x | 0 |
-| ptx | gpt-oss-120b | docinject | 1 | 1 (100%) | 1.00x | 0 |
-| tilelang | gpt-oss-120b | docinject | 28 | 8 (28.6%) | 0.487x | 0 |
-| tilelang | Qwen3-Coder-30B | docinject | 16 | 4 (25.0%) | 0.214x | 0 |
-| triton | gpt-oss-120b | 0shot | 59 | 26 (44.1%) | 0.797x | 0 |
-| triton | gpt-oss-120b | docinject | 32 | 15 (46.9%) | 0.576x | 0 |
-| **triton** | **Qwen3-Coder-30B** | **0shot** | 24 | 18 (75.0%) | **2.13x** | **5** |
-| **triton** | **Qwen3-Coder-30B** | **docinject** | 19 | 10 (52.6%) | **2.38x** | **4** |
+**이상치 처리 방식 (PI, 2026-08-20 수정): 샘플 단위가 아니라 과제 단위 대칭
+제외.** 애초 9개 플래그 샘플만 빼는 안은 기각됐다 — 근거는 §7-2 허용오차
+감사에서 확정됐다: `23_Softmax`뿐 아니라 **`4_Matrix_vector_multiplication_`,
+`6_Matmul_with_large_K_dimension_`도 correct 판정이 신뢰 불가**임이 드러나,
+이 timing 데이터셋(228건)에 실제로 등장하는 **3개 과제 전부**를 speedup
+집계(geomean·fast_1 둘 다)에서 **전 셀 대칭 제외**했다(§7-2에서 걸린 나머지
+2개, `90_cumprod`/`95_CrossEntropyLoss`는 이 데이터셋에 correct 표본이 아예
+없어 이 표엔 영향 없음 — §7-2·§7-3 멀티턴 조치는 5개 전부 대상). 원값/정제값을
+병기한다. **정확성 표(§3·§4)의 판정 자체는 변경하지 않는다** — compiled/
+correctness는 그대로, speedup 집계에서만 이 3개 과제를 뺀다.
 
-### 이상치 — Qwen Triton geomean은 오염돼 있음, 정제된 값을 쓸 것
+| lang | model | condition | n(원) | fast_1(원) | geomean(원) | n(정제) | fast_1(정제) | geomean(정제) |
+|---|---|---|---:|---:|---:|---:|---:|---:|
+| cuda | gpt-oss-120b | docinject | 47 | 8 (17.0%) | 0.249x | 41 | 8 (19.5%) | 0.247x |
+| ptx | gpt-oss-120b | docinject | 1 | 1 (100%) | 1.00x | 1 | 1 (100%) | 1.00x |
+| tilelang | gpt-oss-120b | docinject | 28 | 8 (28.6%) | 0.487x | 24 | 8 (33.3%) | 0.713x |
+| tilelang | Qwen3-Coder-30B | docinject | 16 | 4 (25.0%) | 0.214x | 15 | 3 (20.0%) | 0.170x |
+| triton | gpt-oss-120b | 0shot | 59 | 26 (44.1%) | 0.797x | 49 | 26 (53.1%) | 1.14x |
+| triton | gpt-oss-120b | docinject | 32 | 15 (46.9%) | 0.576x | 28 | 15 (53.6%) | 0.797x |
+| **triton** | **Qwen3-Coder-30B** | **0shot** | 24 | 18 (75.0%) | 2.13x | 14 | 13 (92.9%) | **1.12x** |
+| **triton** | **Qwen3-Coder-30B** | **docinject** | 19 | 10 (52.6%) | 2.38x | 12 | 6 (50.0%) | **0.849x** |
 
-**9건 전부 `23_Softmax` 한 과제에서만 나왔다**(0-shot 5건, docinject 4건, 전부
-Qwen). speedup 405~1,350x. 원인을 코드까지 직접 확인: 이 과제의 `get_inputs()`가
-`(4096, 393216)` — **행 하나가 393,216열**인 극단적으로 넓은 텐서를 만드는데,
-Qwen이 생성한 Triton 커널은 `BLOCK_SIZE=1024`를 하드코딩하고 열 방향으로
-루프/그리드 분할을 하지 않아 **각 행의 앞 1024열만 계산하고 나머지 39만여
-열은 `torch.empty_like`의 미초기화 메모리로 남긴다**(샘플 하나는 그리드
-launch 자체도 `cdiv(batch_size, BLOCK_SIZE)`로 잘못 설정해 4096행 중 4행만
-처리). 그런데도 **correctness 판정을 통과했다** — 원인은 fp16 atol=rtol=1e-2
-허용오차가, 이 과제의 정상 출력값 크기(softmax 원소 기댓값 ≈ 1/393216 ≈
-2.5e-6)보다 4,000배 가까이 크기 때문으로 보인다: 사실상 아무 값이나 0 근처면
-통과한다. **이건 하니스 버그가 아니라 이 특정 과제의 정확성 판정 기준이
-당초 설계(§SELECTION.md #4.1)가 상정하지 않은 극단적 텐서 크기와 만나 무너진
-사례** — speedup>10x 자동 플래그가 정확히 설계된 목적대로 작동해 잡아낸 것이다.
-**판정은 변경하지 않았다**(PI 지시대로), 다만 이 9건을 뺀 정제된 geomean은
-다음과 같이 근본적으로 다르다:
+**논문·분석에는 정제값(오른쪽 3열)을 쓸 것.** 방향이 셀마다 다르다는 점에
+주의: gpt-oss 계열은 오히려 **위로** 이동한다(0.797x→1.14x, 0.576x→0.797x,
+0.487x→0.713x) — 이 3개 과제에서 gpt-oss 커널의 speedup이 유독 낮았다는
+뜻이므로 제외하면 평균이 올라간다. triton|Qwen 두 셀은 **크게 낮아진다**
+(2.13x/2.38x → 1.12x/0.849x) — `23_Softmax`의 405~1,350x 허위 speedup이
+빠지는 효과가 지배적이다. 8셀 중 유일하게 triton|gpt-oss-120b|0shot이
+정제 후 처음으로 fast_1 50%를 넘는다(53.1%) — 표3 서술 시 참고.
 
-| lang | model | condition | n(제외 후) | fast_1 | geomean(제외 후) |
-|---|---|---|---:|---:|---:|
-| triton | Qwen3-Coder-30B | 0shot | 19 | 13 (68.4%) | **0.532x** (2.13x 아님) |
-| triton | Qwen3-Coder-30B | docinject | 15 | 6 (40.0%) | **0.559x** (2.38x 아님) |
+### 근거: 왜 과제 전체를 신뢰할 수 없나
 
-정제 후 Qwen Triton도 gpt-oss와 마찬가지로 **eager보다 느림**(0.53~0.56x) —
-9건을 포함한 표면적 geomean 2.13x/2.38x는 단일 과제의 정확성 판정 결함이
-만든 착시다. **논문·분석에는 정제된 값(제외 후)을 쓸 것.** 표3(오류 분류)에
-`23_Softmax`류(정확성 판정이 텐서 크기에 취약한 과제) 방법론 캐비어트를
-추가할 필요가 있다 — 향후 유사 과제 재검토 대상.
+**`23_Softmax`**: 코드를 직접 확인 — `get_inputs()`가 `(4096, 393216)`(행
+하나가 393,216열)인데 Qwen 생성 Triton 커널 다수가 `BLOCK_SIZE=1024`를
+하드코딩하고 열 방향 루프/그리드 분할을 하지 않아 각 행의 앞 1024열만
+계산하고 나머지는 `torch.empty_like`의 미초기화 메모리로 남긴다. fp16
+atol=rtol=1e-2가 이 과제의 정상 출력 크기(≈2.5e-6)보다 4,000배 커서 통과했다.
 
-## 7. 미완료 / TODO (논문 작성 전 확인 필요)
+**`4_Matrix_vector_multiplication_`, `6_Matmul_with_large_K_dimension_`**:
+§7-2에서 새로 확인 — 이 두 과제는 **참조(PyTorch eager) 모델의 출력 자체가
+fp16에서 오버플로해 전 원소가 `inf`**다(K=1,048,576 / 524,288의 큰 축적
+차원, 입력이 `torch.rand`(U[0,1))라 기댓값상 출력이 수십만 단위로 fp16
+최댓값 65504를 가볍게 넘긴다). `torch.allclose`는 부호가 같은 무한대끼리는
+같다고 처리하므로, **생성된 커널이 내부적으로 fp32 누산 등을 써서 우연히
+같은 방향으로 오버플로하기만 하면** 실제 계산 내용과 무관하게 통과할 수
+있다. 이건 하니스 버그가 아니라 **§4.1의 fp16 통일 결정이 이 두 과제(원래
+fp32/fp64 기준으로 선정됐을 축적 차원)와 만나 상정 못한 조합**을 만든
+경우다.
+
+두 부류 다 **하니스 버그가 아니라 특정 과제 × fp16 통일 정밀도의 조합이
+정확성 판정을 무력화한 사례**이며, gpt-oss의 해당 과제 샘플들(speedup이
+정상 범위로 보인 것들 포함)도 **같은 취약점 아래서 나온 결과라 마찬가지로
+신뢰할 근거가 없다** — 이게 표본 단위가 아니라 과제 단위로 대칭 제외한
+이유다. 정확성 판정 자체(§3·§4의 compiled/correctness)는 바꾸지 않는다 —
+캐비어트로만 남긴다.
+
+## 7-2. 허용오차 감사 (P0-b 착수 전 필수, 2026-08-20 완료)
+
+37과제 전부에 대해 참조(PyTorch eager, fp16) 모델을 1회 forward해 출력
+원소 크기(중앙값 |output|)를 재고, fp16 correctness 허용오차(atol=rtol=1e-2,
+`kernelbench.eval.get_tolerance_for_precision`에서 직접 읽음)와 비교했다.
+CPU 전용(`scripts/audit_tolerance.py`, GPU·배타성 게이트 불필요 — 참조
+모델만 1회 순전파, 커스텀 커널 없음). 결과 파일: `results/eval/tolerance_audit.json`.
+
+**판정 기준 2가지, 둘 다 "atol/median" 비율 하나로는 못 잡는 게 있어서 별도
+플래그로 분리**:
+- **과다-관용**: `atol / median|output| > 10` — 정상 출력값이 허용오차보다
+  훨씬 작아서, 거의 아무 값이나 허용오차 안에 들어와 버리는 경우.
+- **참조-오버플로**: 참조 모델 출력 자체에 `inf`/`nan`이 있는 경우 —
+  `atol/median` 비율 계산으로는 오히려 "문제없음"처럼 보이는 사각지대라
+  (유한수/무한대=0) 별도로 직접 `torch.isinf`/`isnan`을 검사했다.
+
+**5/37 과제(13.5%) 플래그** — 이 중 3개(`23_Softmax`,
+`4_Matrix_vector_multiplication_`, `6_Matmul_with_large_K_dimension_`)는
+§7-1의 228건 correct 표본 중 **42건(18.4%)**에 실제로 걸려 있었다(§7-1에
+반영 완료). 나머지 2개(`90_cumprod`, `95_CrossEntropyLoss`)는 이번 실행
+데이터엔 correct 표본이 없어(`95_CrossEntropyLoss`는 0/79 항상 컴파일
+단계에서 실패) 이번 speedup 표엔 영향 없지만, **멀티턴에서는 새로 correct에
+도달할 수 있으므로** ③ 조치 대상에 포함한다(아래).
+
+| task | 참조 출력 median\|abs\| | atol/median | inf 원소 수 | 플래그 |
+|---|---:|---:|---:|---|
+| 4_Matrix_vector_multiplication_ | nan | inf | 2048 | 과다-관용/참조-오버플로 |
+| 6_Matmul_with_large_K_dimension_ | nan | inf | 65536 | 과다-관용/참조-오버플로 |
+| 90_cumprod | 0 | inf | 0 | 과다-관용 |
+| 95_CrossEntropyLoss | nan | inf | 1 | 과다-관용/참조-오버플로 |
+| 23_Softmax | 2.44e-06 | 4.09e+03 | 0 | 과다-관용 |
+| 39_L2Norm_ | 0.00338 | 2.96 | 0 | - |
+| 94_MSELoss | 0.152 | 0.066 | 0 | - |
+| 67_conv_standard_1D | 0.207 | 0.0482 | 0 | - |
+| 76_conv_standard_1D_dilated_strided__ | 0.207 | 0.0482 | 0 | - |
+| 50_conv_standard_2D__square_input__square_kernel | 0.223 | 0.0449 | 0 | - |
+| 57_conv_transposed_2D__square_input__square_kernel | 0.226 | 0.0442 | 0 | - |
+| 82_conv_depthwise_2D_square_input_square_kernel | 0.257 | 0.0389 | 0 | - |
+| 54_conv_standard_3D__square_input__square_kernel | 0.259 | 0.0387 | 0 | - |
+| 25_Swish | 0.311 | 0.0321 | 0 | - |
+| 26_GELU_ | 0.346 | 0.0289 | 0 | - |
+| 22_Tanh | 0.462 | 0.0216 | 0 | - |
+| 19_ReLU | 0.5 | 0.02 | 0 | - |
+| 44_Average_Pooling_1D | 0.5 | 0.02 | 0 | - |
+| 48_Mean_reduction_over_a_dimension | 0.5 | 0.02 | 0 | - |
+| 97_ScaledDotProductAttention | 0.5 | 0.02 | 0 | - |
+| 21_Sigmoid | 0.623 | 0.0161 | 0 | - |
+| 35_GroupNorm_ | 0.866 | 0.0115 | 0 | - |
+| 40_LayerNorm | 0.866 | 0.0115 | 0 | - |
+| 33_BatchNorm | 0.867 | 0.0115 | 0 | - |
+| 36_RMSNorm_ | 0.869 | 0.0115 | 0 | - |
+| 41_Max_Pooling_1D | 0.917 | 0.0109 | 0 | - |
+| 42_Max_Pooling_2D | 0.958 | 0.0104 | 0 | - |
+| 100_HingeLoss | 0.996 | 0.01 | 0 | - |
+| 49_Max_reduction_over_a_dimension | 1 | 0.01 | 0 | - |
+| 3_Batched_matrix_multiplication | 256 | 3.91e-05 | 0 | - |
+| 8_Matmul_with_irregular_shapes_ | 737 | 1.36e-05 | 0 | - |
+| 1_Square_matrix_multiplication_ | 1.02e+03 | 9.77e-06 | 0 | - |
+| 51_Argmax_over_a_dimension | 1.4e+03 | 7.15e-06 | 0 | - |
+| 17_Matmul_with_transposed_B | 2.05e+03 | 4.88e-06 | 0 | - |
+| 2_Standard_matrix_multiplication_ | 2.05e+03 | 4.88e-06 | 0 | - |
+| 47_Sum_reduction_over_a_dimension | 2.05e+03 | 4.88e-06 | 0 | - |
+| 89_cumsum | 8.19e+03 | 1.22e-06 | 0 | - |
+
+**37과제 전체 결과 순위표는 파일 하단 부록에 이어짐 — 전체 데이터는
+`results/eval/tolerance_audit.json` 참고.** 참고로 다음으로 비율이 높은
+비플래그 과제는 `39_L2Norm_`(2.96x, 10x 미만이라 플래그 안 됨) — 경계에
+가까운 편이니 표3 해석 시 참고.
+
+### 추가 발견 — `_process_input_tensor` 하니스 함수의 label-dtype 버그 (별도 사안, PI 판단 필요)
+
+감사 스크립트를 만들다가 발견: KernelBench의 `_process_input_tensor`(CUDA/
+Triton/TileLang 정확성 경로와 `evaluate.py`의 PTX 경로 전부가 공유)가
+`get_inputs()`가 반환하는 **모든** 텐서를 무조건 `precision`(fp16)으로
+캐스팅한다 — `95_CrossEntropyLoss`의 정수 클래스 인덱스 타겟(`torch.randint`,
+Long이어야 함)도 예외 없이 캐스팅되어 `nn.CrossEntropyLoss`가
+`RuntimeError: expected scalar type Long but found Half`로 죽는다.
+**지금까지는 이 버그가 한 번도 발현되지 않았다** — 이 과제의 실제 샘플
+79/79 전부가 컴파일 단계 등 더 이른 지점에서 이미 실패해서다(우연).
+하지만 **멀티턴 수리 국면에서 모델이 여러 번 시도하다 컴파일을 통과시키는
+순간 이 버그가 발현**되고, 그러면 커널 로직과 무관하게 항상
+`correctness=False`(runtime_error)가 나온다 — 수리 피드백이 "니 커널이
+틀렸다"고 말하지만 실은 하니스 자체의 타입 캐스팅 버그다. **이건 이번 ②
+감사가 요청받은 atol 비율 문제와는 다른 종류의 버그이고, 고칠지 말지는
+범위 밖이라 PI 판단이 필요하다** — 옵션: (a) `_process_input_tensor` 호출
+전에 정수/불리언 타입 텐서는 캐스팅에서 제외하도록 하니스 수정(harness 레벨
+변경, 전 언어 동시 적용 필요), (b) `95_CrossEntropyLoss`를 아예 과제
+목록에서 제외, (c) 그대로 두고 "이 과제는 구조적으로 항상 실패한다"로
+캐비어트만 남김. 이 감사 스크립트(`scripts/audit_tolerance.py`)는 정수
+텐서를 캐스팅에서 제외해 이 버그를 **재현하지 않고** 우회했다(측정
+목적으로만 — 실제 하니스는 그대로 둠).
+
+### 7-3. 멀티턴 프로토콜 수정 — 최적화 국면 제외 과제 (PI, 2026-08-20)
+
+PROMPT_SPEC §7에 기록 예정(착수 전 필수). §7-2에서 플래그된 5개 과제
+(`23_Softmax`, `4_Matrix_vector_multiplication_`,
+`6_Matmul_with_large_K_dimension_`, `90_cumprod`, `95_CrossEntropyLoss`)는
+**정확성 판정이 성능(speedup) 피드백 아래서 부분 계산·오버플로 일치 같은
+"해킹"을 걸러낼 수 없다** — 최적화 국면(correct 도달 후 latency 피드백을
+주고 계속 개선시키는 단계)에 들어가면, 모델이 진짜 커널을 최적화하는 대신
+이 취약점을 이용해 더 "빠른" 가짜 정답을 만들 유인이 생긴다. 조치:
+- **수리 국면은 정상 포함** — 이 과제들도 컴파일/런타임 에러 피드백으로
+  정답을 찾는 시도는 그대로 진행.
+- **correct 도달 시 그 체인은 즉시 종료**(최적화 국면 진입 안 함) — 다른
+  과제들의 "correct 도달 후 최적화 계속" 규칙과 다르게 취급.
+- 사유를 PROMPT_SPEC §7 변경 이력에 명시하고 4개 언어 동일 적용.
+
+## 8. 미완료 / TODO (논문 작성 전 확인 필요)
 
 1. ~~타이밍/스피드업 측정 미구현~~ — **완료, §7-1 참고 (2026-08-20).**
 2. **수리 1턴(컴파일 에러 메시지만 제공) 프로토콜 미구현.** CLAUDE.md 프로토콜의
@@ -294,14 +424,14 @@ launch 자체도 `cdiv(batch_size, BLOCK_SIZE)`로 잘못 설정해 4096행 중 
 7. 토큰 수/솔루션(CLAUDE.md 지표) 집계 미실행 — `results/raw/`의 `usage.completion_tokens`
    에서 바로 뽑을 수 있음, `scripts/analyze.py` 아직 이 집계 없음.
 
-## 8. 하드웨어·환경 (논문 Setup 섹션용, CLAUDE.md 원본과 동일)
+## 9. 하드웨어·환경 (논문 Setup 섹션용, CLAUDE.md 원본과 동일)
 
 RTX PRO 6000 Blackwell Workstation Edition, sm_120(PTX `.target sm_120a`),
 드라이버 595.84, CUDA 13.2(드라이버)/12.8.93(사용 nvcc), torch 2.8.0+cu128,
 triton 3.4.0, tilelang 0.1.13, vLLM 0.27.1. **문헌의 A6000 수치와 비교
 금지** — 원 문서가 상정한 하드웨어와 다름(2026-08-19 세션에서 정정).
 
-## 9. 논문 작성 에이전트를 위한 빠른 참조
+## 10. 논문 작성 에이전트를 위한 빠른 참조
 
 - 표1(2×2 메인 결과) 소스: 위 §3 표, 원본 `results/eval/full_run_20260819.json`
 - 표2(문서 주입 전후) 소스: 위 §4 표, 원본 `results/eval/docinject_run_20260820T072056.json`
@@ -310,8 +440,11 @@ triton 3.4.0, tilelang 0.1.13, vLLM 0.27.1. **문헌의 A6000 수치와 비교
   (동일 20과제 기준 비교 — 전체 37과제 기준과 섞지 말 것).
 - 표3(오류 분류) 소스: 위 §5 — CUDA(gpt-oss 완결/Qwen 미완), TileLang(완결),
   PTX·Triton(개략만).
-- 그림1(speedup) 소스: **없음, §7-1 참고**.
+- 그림1(speedup) 소스: §7-1, 정제값(3개 과제 대칭 제외 후) 표 사용 — 원값 아님.
+- 표4(허용오차 감사) 소스: §7-2 전체, 원본 `results/eval/tolerance_audit.json`.
 - 과제 선정·제외 근거: `tasks/SELECTION.md`
-- 정확성 판정 기준값: fp16, atol=rtol=1e-2 (`tasks/SELECTION.md` §4.1)
+- 정확성 판정 기준값: fp16, atol=rtol=1e-2 (`tasks/SELECTION.md` §4.1) — 단
+  5개 과제(§7-2)는 이 기준값 자체가 해당 과제 출력 크기와 안 맞아 사실상
+  무의미, 캐비어트 필수.
 - 재현성 5요소(체크포인트/vLLM/dtype/샘플링/GPU) 로그 위치: `results/raw/*/*/*/*/sample_*.json`
   각 레코드 자체 필드, `logs/vllm/{gptoss,qwen}_manifest.json`
