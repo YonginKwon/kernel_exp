@@ -125,41 +125,48 @@ docinject 체인은 문서 주입 조건을 전 턴 유지, 그 외는 완전히
 
 #### 수리 국면 피드백 (incorrect인 동안, 4언어 동일, 3계층 고정)
 
-- **컴파일 실패**:
-  ```
-  Your previous solution failed to compile with the following error:
+에러 원문·집계치 외 요약·해석·힌트 추가 금지(에러 메시지의 "LLM 가독성"
+측정 목적, §3.3의 원칙 계승). 모든 실패 유형이 동일하게 턴 1개를 소비 —
+턴 내부 재시도 루프 없음. 4개 유형 각각 고정 템플릿(`prompts/spec_loader.py`
+파싱 대상, 아래 소제목 이름 변경 금지):
 
-  {COMPILER_ERROR_VERBATIM}
+##### 컴파일 실패
+```
+Your previous solution failed to compile with the following error:
 
-  Provide the corrected complete solution in a single code block.
-  ```
-  (`COMPILER_ERROR_VERBATIM`은 20,000자 한도 내 원문 — `scripts/evaluate.py`의
-  `COMPILE_ERROR_LOG_CAP`과 동일 값)
-- **런타임 실패** (컴파일은 됐으나 실행 중 예외):
-  ```
-  Your previous solution compiled but raised an error at runtime:
+{COMPILER_ERROR_VERBATIM}
 
-  {RUNTIME_ERROR_VERBATIM}
+Provide the corrected complete solution in a single code block.
+```
+(`COMPILER_ERROR_VERBATIM`은 20,000자 한도 내 원문 — `scripts/evaluate.py`의
+`COMPILE_ERROR_LOG_CAP`과 동일 값)
 
-  Provide the corrected complete solution in a single code block.
-  ```
-- **정확성 실패** (컴파일·실행은 됐으나 출력 불일치 — **집계치만, 참조 텐서
-  값 절대 포함 금지**):
-  ```
-  Your previous solution ran but produced incorrect output:
+##### 런타임 실패
+(컴파일은 됐으나 실행 중 예외)
+```
+Your previous solution compiled but raised an error at runtime:
 
-  Max absolute error: {MAX_ABS_ERROR}
-  Fraction of mismatched elements: {MISMATCH_FRACTION}
+{RUNTIME_ERROR_VERBATIM}
 
-  Provide the corrected complete solution in a single code block.
-  ```
-- **파싱 실패**(truncated / 코드 블록 없음, §5 참고) — 고정 한 줄:
-  ```
-  Your previous response was truncated / contained no code block. Provide the complete solution in a single code block.
-  ```
-- 에러 원문·집계치 외 요약·해석·힌트 추가 금지(에러 메시지의 "LLM 가독성"
-  측정 목적, §3.3의 원칙 계승). 모든 실패 유형이 동일하게 턴 1개를 소비
-  — 턴 내부 재시도 루프 없음.
+Provide the corrected complete solution in a single code block.
+```
+
+##### 정확성 실패
+(컴파일·실행은 됐으나 출력 불일치 — **집계치만, 참조 텐서 값 절대 포함 금지**)
+```
+Your previous solution ran but produced incorrect output:
+
+Max absolute error: {MAX_ABS_ERROR}
+Fraction of mismatched elements: {MISMATCH_FRACTION}
+
+Provide the corrected complete solution in a single code block.
+```
+
+##### 파싱 실패
+(truncated / 코드 블록 없음, §5 참고 — 치환 없는 고정 한 줄)
+```
+Your previous response was truncated / contained no code block. Provide the complete solution in a single code block.
+```
 
 #### 최적화 국면 피드백 (correct 도달 시 — 종료 아니라 전환, 4언어 동일 고정 형식)
 
