@@ -34,6 +34,7 @@ enforced even though this pilot build doesn't measure timing yet, so nobody
 has to remember to add the check later once timing does land.
 """
 import argparse
+import hashlib
 import json
 import multiprocessing as mp
 import os
@@ -42,7 +43,10 @@ import subprocess
 import sys
 import tempfile
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
+
+import numpy as np
 
 REPO_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(REPO_ROOT / "third_party" / "KernelBench" / "src"))
@@ -115,6 +119,7 @@ _cpp_extension.load_inline = _make_std_flag_stripping_wrapper(_cpp_extension.loa
 _cpp_extension.load = _make_std_flag_stripping_wrapper(_cpp_extension.load)
 
 from kernelbench import eval as kb_eval  # noqa: E402
+from kernelbench import timing as kb_timing  # noqa: E402
 
 RAW_DIR = REPO_ROOT / "results" / "raw"
 EVAL_DIR = REPO_ROOT / "results" / "eval"
@@ -275,7 +280,7 @@ def os_remove_quiet(path):
         pass
 
 
-def eval_one(record: dict, device) -> dict:
+def eval_one(record: dict, device, precompiled_build_dir: str | None = None) -> dict:
     if record["status"] != "generated":
         return {"compiled": False, "correctness": False, "eval_skipped_reason": record["status"]}
 
@@ -305,8 +310,22 @@ def eval_one(record: dict, device) -> dict:
     # empirically -- this is exactly what happened the first time this
     # retry logic was added, 2026-08-19.
     build_dirs = []
+    _first_build_dir_call = [True]
 
     def fresh_build_dir():
+        # P0-b (2026-08-20): if a precompiled build dir was handed in (see
+        # precompile_cuda_batch()), the FIRST call reuses it -- ninja sees
+        # identical source/flags already built and no-ops instead of
+        # recompiling, so the nvcc cost happened earlier in parallel, not
+        # here in the serialized GPU-touching pass. Every subsequent call
+        # (this function's own internal retry/recovery attempts below)
+        # still gets a genuinely fresh dir, exactly as before -- reusing a
+        # dir across a *failed* attempt is the documented staleness bug
+        # this project already hit once (see the retry comment above).
+        if precompiled_build_dir is not None and _first_build_dir_call[0]:
+            _first_build_dir_call[0] = False
+            build_dirs.append(precompiled_build_dir)
+            return precompiled_build_dir
         d = tempfile.mkdtemp(prefix="k2x2_eval_")
         build_dirs.append(d)
         return d
@@ -358,11 +377,11 @@ def eval_one(record: dict, device) -> dict:
     }
 
 
-def _eval_worker_entry(record, result_conn):
+def _eval_worker_entry(record, result_conn, precompiled_build_dir=None):
     """Runs in an isolated (spawn) subprocess -- see eval_one_isolated()."""
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     try:
-        result = eval_one(record, device)
+        result = eval_one(record, device, precompiled_build_dir=precompiled_build_dir)
     except Exception as e:
         result = {"compiled": False, "correctness": False,
                    "eval_exception": f"{type(e).__name__}: {e}"}
@@ -372,7 +391,7 @@ def _eval_worker_entry(record, result_conn):
         result_conn.close()
 
 
-def eval_one_isolated(record: dict, timeout: int = 300) -> dict:
+def eval_one_isolated(record: dict, timeout: int = 300, precompiled_build_dir: str | None = None) -> dict:
     """Runs eval_one() in a fresh subprocess (multiprocessing 'spawn').
 
     NOTE (2026-08-20): a genuinely buggy generated kernel can trigger a CUDA
@@ -390,7 +409,7 @@ def eval_one_isolated(record: dict, timeout: int = 300) -> dict:
     eval_exception, not silently dropped."""
     ctx = mp.get_context("spawn")
     parent_conn, child_conn = ctx.Pipe(duplex=False)
-    proc = ctx.Process(target=_eval_worker_entry, args=(record, child_conn))
+    proc = ctx.Process(target=_eval_worker_entry, args=(record, child_conn, precompiled_build_dir))
     proc.start()
     child_conn.close()
 
@@ -419,6 +438,403 @@ def eval_one_isolated(record: dict, timeout: int = 300) -> dict:
                                f"or a hang killed after a {timeout}s timeout"}
 
 
+PRECOMPILE_BUILD_ROOT = REPO_ROOT / "results" / ".eval_build_cache"
+PRECOMPILE_WORKERS = 16  # PI instruction 2026-08-20 (P0-b): nvcc workers >= 16
+
+
+def deterministic_build_dir(path: str) -> Path:
+    """Stable per-sample build dir (unlike eval_one's own tempfile.mkdtemp,
+    which is deliberately fresh every call -- see its docstring). Needs to be
+    stable ONLY so a parallel precompile pass and the later serialized real
+    pass agree on the same directory for the SAME sample's SAME code; each
+    is still a dedicated directory, no cross-sample sharing."""
+    h = hashlib.sha1(path.encode()).hexdigest()[:16]
+    d = PRECOMPILE_BUILD_ROOT / h
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def _precompile_worker_entry(record, build_dir, result_conn):
+    """Runs in an isolated (spawn) subprocess. CUDA only: compiles + dlopens
+    the generated extension (kb_eval.load_custom_model) WITHOUT ever
+    instantiating a model or touching a CUDA device -- torch.utils.
+    cpp_extension's build+import step is pure host-side compiler/linker work;
+    a CUDA context is only created lazily by the first actual device op
+    (e.g. `.to(device="cuda")`), which this deliberately never calls. That is
+    what makes it safe to run many of these concurrently on one GPU-having
+    machine: nothing here touches the GPU, so P0-b's requirement (decouple
+    compile from the GPU stage, nvcc workers >= 16) can run genuinely in
+    parallel while the real eval loop stays serialized for GPU safety.
+
+    On failure, captures the real compiler error here (mirroring
+    _recover_real_compile_error's exact error-formatting shape) instead of
+    just a bool -- a confirmed compile failure needs no GPU-touching work at
+    all, so the caller can build the sample's final eval record directly
+    from this and skip the serialized pass entirely for it (measured: without
+    this, failing samples were compiled TWICE -- once here, once again in
+    the serial pass -- which made small failure-heavy batches net SLOWER
+    with precompile on than off; this fixes that)."""
+    try:
+        context = {}
+        kb_eval.load_custom_model(record["parsed_code"], context, build_directory=str(build_dir))
+        if context.get("ModelNew") is None:
+            result_conn.send({"ok": False, "metadata": {
+                "compilation_error_name": "NoModelNew",
+                "compilation_error": "ModelNew not defined in generated code"}})
+        else:
+            result_conn.send({"ok": True, "metadata": None})
+    except Exception as e:
+        result_conn.send({"ok": False, "metadata": {
+            "compilation_error_name": type(e).__name__,
+            "compilation_error": str(e)[:COMPILE_ERROR_LOG_CAP]}})
+    finally:
+        result_conn.close()
+
+
+def _precompile_one(record, build_dir, timeout=300):
+    """Returns {"ok": True} (compiled, build_dir is reusable), {"ok": False,
+    "metadata": {...}} (confirmed compile failure, real error captured), or
+    None (subprocess crashed/timed out -- caller falls back to treating this
+    sample as not-precompiled, i.e. normal fresh-tempdir behavior in the
+    serial pass, same as if precompile had never run for it)."""
+    ctx = mp.get_context("spawn")
+    parent_conn, child_conn = ctx.Pipe(duplex=False)
+    proc = ctx.Process(target=_precompile_worker_entry, args=(record, build_dir, child_conn))
+    proc.start()
+    child_conn.close()
+    result = None
+    if parent_conn.poll(timeout):
+        try:
+            result = parent_conn.recv()
+        except EOFError:
+            result = None
+    parent_conn.close()
+    proc.join(timeout=10)
+    if proc.is_alive():
+        proc.terminate()
+        proc.join(timeout=10)
+    if proc.is_alive():
+        proc.kill()
+        proc.join()
+    return result
+
+
+def precompile_cuda_batch(records_with_paths: list, max_workers: int = PRECOMPILE_WORKERS):
+    """Precompiles every CUDA sample's extension in parallel (up to
+    max_workers concurrent nvcc/ninja invocations, each in its own isolated
+    subprocess + build dir -- pure CPU work, no GPU touch, see
+    _precompile_worker_entry).
+
+    Returns (build_dir_map, failure_entries):
+    - build_dir_map: {path: build_dir} for samples that compiled -- the
+      serial pass reuses this dir (ninja no-ops on the unchanged build, so
+      the nvcc cost already happened here, in parallel) and proceeds
+      straight to the GPU-touching correctness check.
+    - failure_entries: {path: metadata_dict} for samples with a CONFIRMED
+      compile failure -- the caller builds the final eval record directly
+      from this and skips the serial pass for it entirely (no second
+      compile attempt, no subprocess).
+    A sample missing from BOTH dicts means its precompile subprocess crashed
+    or timed out (rare) -- the serial pass treats it exactly as if
+    precompile had never run (fresh tempdir, full retry logic intact).
+
+    records_with_paths: list of (path_str, record) for CUDA, gen_status=="generated" only."""
+    if not records_with_paths:
+        return {}, {}
+    print(f"[precompile] {len(records_with_paths)} CUDA sample(s), "
+          f"{max_workers} parallel nvcc worker(s)...")
+    build_dir_map = {}
+    failure_entries = {}
+    with ThreadPoolExecutor(max_workers=max_workers) as pool:
+        futures = {}
+        for path, record in records_with_paths:
+            build_dir = deterministic_build_dir(path)
+            futures[pool.submit(_precompile_one, record, build_dir)] = (path, build_dir)
+        done = 0
+        for fut in as_completed(futures):
+            path, build_dir = futures[fut]
+            done += 1
+            try:
+                result = fut.result()
+            except Exception:
+                result = None
+            if result is None:
+                shutil.rmtree(build_dir, ignore_errors=True)  # crashed/timed out -- fall back
+            elif result["ok"]:
+                build_dir_map[path] = str(build_dir)
+            else:
+                failure_entries[path] = result["metadata"]
+                shutil.rmtree(build_dir, ignore_errors=True)  # confirmed failure, dir no longer needed
+            if done % 20 == 0 or done == len(futures):
+                print(f"[precompile] {done}/{len(futures)} done "
+                      f"({len(build_dir_map)} compiled, {len(failure_entries)} confirmed-failed)")
+    skipped_gpu_pass = len(failure_entries)
+    print(f"[precompile] {len(build_dir_map)}/{len(records_with_paths)} compiled successfully "
+          f"(reused in serial pass), {skipped_gpu_pass} confirmed-failed (serial pass SKIPPED "
+          f"for these -- no second compile attempt)")
+    return build_dir_map, failure_entries
+
+
+NUM_WARMUP = 25   # PI protocol (CLAUDE.md / tasks/SELECTION.md #4.1): warmup 25, measure 100, median
+NUM_TRIALS = 100
+EXCESSIVE_SPEEDUP_THRESHOLD = 10.0  # PI instruction 2026-08-20: flag for manual review, verdict unchanged
+
+
+def _timing_stats(elapsed_times: list) -> dict:
+    """mean/median/std/min/max/num_trials from a raw elapsed-times list (ms).
+    kernelbench.timing.get_timing_stats() gives mean/std/min/max but not
+    median, which the project's timing protocol requires -- computed here
+    instead of patching third_party/KernelBench."""
+    arr = np.array(elapsed_times, dtype=float)
+    return {
+        "mean": float(np.mean(arr)), "median": float(np.median(arr)),
+        "std": float(np.std(arr)), "min": float(np.min(arr)), "max": float(np.max(arr)),
+        "num_trials": len(elapsed_times),
+    }
+
+
+def _load_model_new_for_timing(language: str, code: str, build_dir: str | None = None):
+    """Loads ModelNew the same way eval_one()/_recover_real_compile_error()
+    do per language. Returns (ModelNew, cleanup) -- cleanup() must be called
+    when done (removes the triton/tilelang tempfile; no-op for cuda/ptx)."""
+    if language in ("triton", "tilelang"):
+        ModelNew, tf = kb_eval.load_custom_model_with_tempfile(code, entry_point="ModelNew")
+
+        def cleanup():
+            tf.close()
+            os_remove_quiet(tf.name)
+
+        return ModelNew, cleanup
+    elif language == "cuda":
+        context = {}
+        kb_eval.load_custom_model(code, context, build_directory=build_dir)
+        ModelNew = context.get("ModelNew")
+        if ModelNew is None:
+            raise RuntimeError("ModelNew not defined after load_custom_model")
+        return ModelNew, lambda: None
+    elif language == "ptx":
+        from ptx_harness import ptx_load, ptx_launch  # noqa: F401 -- pre-seeded into exec namespace below
+
+        context = {"ptx_load": ptx_load, "ptx_launch": ptx_launch, "__builtins__": __builtins__}
+        exec(code, context)
+        ModelNew = context.get("ModelNew")
+        if ModelNew is None:
+            raise RuntimeError("ModelNew not defined in generated PTX code")
+        return ModelNew, lambda: None
+    else:
+        raise ValueError(f"unknown language {language!r}")
+
+
+def _time_forward(model, get_inputs_fn, device, language: str) -> dict:
+    """One warmup(25)+measure(100) timing pass over model(*inputs), same
+    protocol for both the generated kernel and the PyTorch-eager baseline so
+    the two numbers are directly comparable. Reuses KernelBench's own
+    cuda-event timer (kernelbench.timing.time_execution_with_cuda_event) --
+    it already does torch.cuda.synchronize before/after every trial -- just
+    called here with num_warmup/num_trials/discard_first matching the
+    project's protocol instead of KernelBench's own (lower) defaults, and
+    kept outside eval_kernel_against_ref() (which hardcodes num_warmup=3 and
+    doesn't expose it to the caller)."""
+    kb_eval.set_seed(42)
+    inputs = get_inputs_fn()
+    inputs = [kb_eval._process_input_tensor(x, device, language, PRECISION) for x in inputs]
+    elapsed = kb_timing.time_execution_with_cuda_event(
+        model, inputs, num_warmup=NUM_WARMUP, num_trials=NUM_TRIALS, discard_first=0,
+        verbose=False, device=device,
+    )
+    return _timing_stats(elapsed)
+
+
+def time_one(record: dict, code: str, device) -> dict:
+    """Times an already-verified-correct sample: kernel latency and a
+    freshly-remeasured PyTorch-eager fp16 baseline on THIS GPU (CLAUDE.md /
+    tasks/SELECTION.md #4.1 condition (1): never reuse literature/cached
+    baseline numbers). The baseline is remeasured per sample rather than
+    cached per task -- redundant across samples of the same task, but avoids
+    any cross-process caching complexity/staleness risk for what is, at
+    n=228 correct samples total, a cheap redundancy to accept."""
+    language = record["language"]
+    ref_src = load_reference(record["task"])
+    ref_context = {}
+    Model, get_init_inputs, get_inputs = kb_eval.load_original_model_and_inputs(ref_src, ref_context)
+
+    build_dir = tempfile.mkdtemp(prefix="k2x2_time_") if language == "cuda" else None
+    cleanup_model = lambda: None
+    try:
+        ModelNew, cleanup_model = _load_model_new_for_timing(language, code, build_dir=build_dir)
+
+        kb_eval.set_seed(42)
+        init_inputs = get_init_inputs()
+        init_inputs = [kb_eval._process_input_tensor(x, device, language, PRECISION) for x in init_inputs]
+
+        kb_eval.set_seed(42)
+        with torch.no_grad():
+            new_model = ModelNew(*init_inputs).to(device=device, dtype=PRECISION)
+            kernel_stats = _time_forward(new_model, get_inputs, device, language)
+
+            kb_eval.set_seed(42)
+            original_model = Model(*init_inputs).to(device=device, dtype=PRECISION)
+            baseline_stats = _time_forward(original_model, get_inputs, device, language)
+
+        speedup = baseline_stats["median"] / kernel_stats["median"]
+        return {
+            "kernel_ms": kernel_stats, "baseline_ms": baseline_stats,
+            "speedup": speedup,
+            "excessive_speedup_flag": speedup > EXCESSIVE_SPEEDUP_THRESHOLD,
+            "num_warmup": NUM_WARMUP, "num_trials": NUM_TRIALS,
+        }
+    except Exception as e:
+        return {"timing_exception": f"{type(e).__name__}: {e}"}
+    finally:
+        cleanup_model()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+        if build_dir:
+            shutil.rmtree(build_dir, ignore_errors=True)
+
+
+def _timing_worker_entry(record, code, result_conn):
+    """Runs in an isolated (spawn) subprocess -- see time_one_isolated()."""
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    try:
+        result = time_one(record, code, device)
+    except Exception as e:
+        result = {"timing_exception": f"{type(e).__name__}: {e}"}
+    try:
+        result_conn.send(result)
+    finally:
+        result_conn.close()
+
+
+def time_one_isolated(record: dict, code: str, timeout: int = 180) -> dict:
+    """Same isolation rationale as eval_one_isolated(): a single sample
+    crashing (or an unexpectedly slow timing loop) only costs that one
+    sample's subprocess, never the whole timing run."""
+    ctx = mp.get_context("spawn")
+    parent_conn, child_conn = ctx.Pipe(duplex=False)
+    proc = ctx.Process(target=_timing_worker_entry, args=(record, code, child_conn))
+    proc.start()
+    child_conn.close()
+
+    result = None
+    if parent_conn.poll(timeout):
+        try:
+            result = parent_conn.recv()
+        except EOFError:
+            result = None
+    parent_conn.close()
+
+    proc.join(timeout=10)
+    if proc.is_alive():
+        proc.terminate()
+        proc.join(timeout=10)
+    if proc.is_alive():
+        proc.kill()
+        proc.join()
+
+    if result is not None:
+        return result
+    return {"timing_exception": f"timing subprocess produced no result "
+                                 f"(exitcode={proc.exitcode}) -- crash or hang "
+                                 f"killed after a {timeout}s timeout"}
+
+
+def collect_correct_records(source_paths: list[Path]) -> list[dict]:
+    """Pulls every compiled+correct record out of one or more eval JSON
+    files (e.g. the 0-shot full run and the docinject ablation) and attaches
+    the generated code from results/raw/. Only correct samples are timed --
+    timing an incorrect kernel's latency is meaningless."""
+    out = []
+    for p in source_paths:
+        data = json.loads(p.read_text())
+        for r in data["records"]:
+            if r.get("compiled") and r.get("correctness"):
+                raw = json.loads((RAW_DIR / r["path"]).read_text())
+                out.append({**r, "_code": raw["parsed_code"], "_source": str(p)})
+    return out
+
+
+TIMING_MAX_ATTEMPTS = 3  # 1 try + 2 retries -- see run_timing()'s docstring note
+
+
+def run_timing(source_paths: list[Path], checkpoint_path: Path, prior_records=None) -> list:
+    """NOTE (2026-08-20): timing a correct CUDA sample intermittently segfaults
+    inside torch.cuda.synchronize() (confirmed via PYTHONFAULTHANDLER=1 -- crash
+    is in kernelbench.timing.time_execution_with_cuda_event's synchronize call,
+    not in this project's code). Directly reproduced as FLAKY, not deterministic:
+    the identical sample crashed on one invocation and then succeeded twice in a
+    row on immediate retries with no code change. This is the same class of
+    intermittent segfault already documented multiple times on this GPU/driver/
+    torch combination (CLAUDE.md: vLLM CUDA-graph capture, FlashInfer MoE
+    autotuner) -- not something a code fix here can address. Each sample's
+    subprocess isolation (time_one_isolated) already contains the blast radius
+    to that one sample; retrying a crashed/timed-out sample up to
+    TIMING_MAX_ATTEMPTS times (fresh subprocess each attempt) is the same
+    mitigation pattern eval_one() already uses for its own transient-failure
+    case (lock-contention retry)."""
+    records = list(prior_records or [])
+    already_done = {r["path"] for r in records}
+    to_time = [r for r in collect_correct_records(source_paths) if r["path"] not in already_done]
+    print(f"[timing] {len(to_time)} correct sample(s) to time "
+          f"({len(already_done)} already in checkpoint, skipped)")
+
+    for i, r in enumerate(to_time, 1):
+        result = None
+        for attempt in range(1, TIMING_MAX_ATTEMPTS + 1):
+            result = time_one_isolated(r, r["_code"])
+            if "timing_exception" not in result:
+                if attempt > 1:
+                    result["recovered_after_attempts"] = attempt
+                break
+            print(f"[timing] {i}/{len(to_time)} {r['language']:8s} {r['task']:35s} "
+                  f"sample={r['sample_index']} attempt {attempt}/{TIMING_MAX_ATTEMPTS} "
+                  f"-> {result['timing_exception'][:100]}"
+                  + (" -- retrying (fresh subprocess)" if attempt < TIMING_MAX_ATTEMPTS else ""))
+        entry = {
+            "path": r["path"], "task": r["task"], "task_family": r.get("task_family"),
+            "language": r["language"], "condition": r["condition"],
+            "model": r["model"], "sample_index": r["sample_index"], "source": r["_source"],
+            **result,
+        }
+        records.append(entry)
+        if "timing_exception" in result:
+            print(f"[timing] {i}/{len(to_time)} {r['language']:8s} {r['task']:35s} "
+                  f"sample={r['sample_index']} -> ERROR: {result['timing_exception'][:100]}")
+        else:
+            flag = " *** EXCESSIVE SPEEDUP ***" if result["excessive_speedup_flag"] else ""
+            print(f"[timing] {i}/{len(to_time)} {r['language']:8s} {r['task']:35s} "
+                  f"sample={r['sample_index']} -> kernel={result['kernel_ms']['median']:.4g}ms "
+                  f"baseline={result['baseline_ms']['median']:.4g}ms "
+                  f"speedup={result['speedup']:.3g}x{flag}")
+        checkpoint_path.write_text(json.dumps(
+            {"records": records, "status": "in_progress"}, indent=2, default=str))
+    return records
+
+
+def summarize_timing(records: list) -> dict:
+    by = {}
+    for r in records:
+        if "timing_exception" in r:
+            continue
+        k = f"{r['language']}|{r['model'].split('/')[-1]}|{r['condition']}"
+        by.setdefault(k, {"n": 0, "speedups": [], "fast_1": 0, "excessive_flagged": 0})
+        d = by[k]
+        d["n"] += 1
+        d["speedups"].append(r["speedup"])
+        if r["speedup"] > 1.0:
+            d["fast_1"] += 1
+        if r["excessive_speedup_flag"]:
+            d["excessive_flagged"] += 1
+    out = {}
+    for k, d in by.items():
+        geomean = float(np.exp(np.mean(np.log(np.array(d["speedups"])))))
+        out[k] = {
+            "n": d["n"], "fast_1": d["fast_1"], "fast_1_frac": d["fast_1"] / d["n"],
+            "speedup_geomean": geomean, "excessive_flagged": d["excessive_flagged"],
+        }
+    return out
+
+
 def load_checkpoint_records(path: Path) -> list:
     """Reads the records already evaluated in a previous (possibly interrupted) run.
 
@@ -438,18 +854,39 @@ def load_checkpoint_records(path: Path) -> list:
 
 
 def run_eval(language=None, condition=None, model_dir=None, task=None, raw_dir=RAW_DIR,
-             checkpoint_path=None, prior_records=None):
+             checkpoint_path=None, prior_records=None, precompile_workers=PRECOMPILE_WORKERS):
     records = list(prior_records or [])
     already_done = {r["path"] for r in records}
     skipped = 0
+
+    to_eval = []
     for path, record in find_samples(language, condition, model_dir, task, raw_dir):
         rel = str(path.relative_to(raw_dir))
         if rel in already_done:
             skipped += 1
             continue
-        result = eval_one_isolated(record)
+        to_eval.append((rel, record))
+
+    # P0-b (2026-08-20): parallel nvcc precompile for CUDA, decoupled from
+    # the serialized GPU-touching pass below -- see precompile_cuda_batch().
+    build_dir_map, precompile_failures = {}, {}
+    if precompile_workers > 1:
+        cuda_to_precompile = [(p, r) for p, r in to_eval
+                               if r["language"] == "cuda" and r["status"] == "generated"]
+        build_dir_map, precompile_failures = precompile_cuda_batch(
+            cuda_to_precompile, max_workers=precompile_workers)
+
+    for rel, record in to_eval:
+        if rel in precompile_failures:
+            # Confirmed compile failure already captured with the real
+            # compiler error during the parallel precompile pass -- no GPU
+            # touch needed for a failed compile, so skip the serial
+            # subprocess entirely (see precompile_cuda_batch's docstring).
+            result = {"compiled": False, "correctness": False, "metadata": precompile_failures[rel]}
+        else:
+            result = eval_one_isolated(record, precompiled_build_dir=build_dir_map.get(rel))
         entry = {
-            "path": str(path.relative_to(raw_dir)),
+            "path": rel,
             "task": record["task"], "task_family": record.get("task_family"),
             "language": record["language"], "condition": record["condition"],
             "model": record["model"], "sample_index": record["sample_index"],
@@ -500,11 +937,70 @@ def main():
                     help="continue an interrupted run from its checkpoint JSON: samples already "
                          "recorded there are skipped (never re-evaluated) and new results are "
                          "appended to the same file. Implies --out <RESUME> unless --out is given.")
+    ap.add_argument("--timing", action="store_true",
+                    help="switch modes entirely: instead of compile+correctness, measure "
+                         "latency (warmup 25 / measure 100 / median, kernel + freshly "
+                         "remeasured PyTorch-eager fp16 baseline) for every compiled+correct "
+                         "sample pulled from --timing-sources. Ignores --language/--condition/"
+                         "--model-dir/--task/--raw-dir.")
+    ap.add_argument("--timing-sources", nargs="+", default=None,
+                    help="one or more eval JSON files (e.g. results/eval/full_run_20260819.json "
+                         "results/eval/docinject_run_....json) to pull compiled+correct records "
+                         "from. Required with --timing -- no default, to avoid silently timing "
+                         "the wrong run.")
+    ap.add_argument("--precompile-workers", type=int, default=PRECOMPILE_WORKERS,
+                    help="parallel nvcc/ninja workers for CUDA precompilation before the "
+                         "serialized GPU-touching eval pass (P0-b, 2026-08-20). Pure CPU work, "
+                         "no GPU touch -- see precompile_cuda_batch(). Set to 0 or 1 to disable "
+                         "and compile inline as before. Ignored with --timing.")
     args = ap.parse_args()
 
     assert_gpu_exclusive()
 
     EVAL_DIR.mkdir(parents=True, exist_ok=True)
+
+    if args.timing:
+        if not args.timing_sources:
+            print("[refuse] --timing requires --timing-sources <eval.json> [<eval.json> ...]",
+                  file=sys.stderr)
+            return 1
+        source_paths = [Path(p) for p in args.timing_sources]
+        for p in source_paths:
+            if not p.exists():
+                print(f"[refuse] --timing-sources path does not exist: {p}", file=sys.stderr)
+                return 1
+        if args.out:
+            out_path = Path(args.out)
+        elif args.resume:
+            out_path = Path(args.resume)
+        else:
+            out_path = EVAL_DIR / f"timing_{time.strftime('%Y%m%dT%H%M%S')}.json"
+
+        prior_records = []
+        if args.resume:
+            resume_path = Path(args.resume)
+            prior_records = load_checkpoint_records(resume_path)
+            print(f"[timing] --resume {resume_path}: {len(prior_records)} sample(s) already timed")
+
+        records = run_timing(source_paths, checkpoint_path=out_path, prior_records=prior_records)
+        summary = summarize_timing(records)
+
+        print("\n=== timing summary (lang|model|condition: n, fast_1, speedup geomean) ===")
+        for k, d in sorted(summary.items()):
+            print(f"  {k:55s} n={d['n']:3d} fast_1={d['fast_1']:3d} ({100*d['fast_1_frac']:5.1f}%) "
+                  f"speedup_geomean={d['speedup_geomean']:.3g}x excessive_flagged={d['excessive_flagged']}")
+        flagged = [r for r in records if r.get("excessive_speedup_flag")]
+        if flagged:
+            print(f"\n=== {len(flagged)} sample(s) flagged for manual review (speedup > "
+                  f"{EXCESSIVE_SPEEDUP_THRESHOLD}x, verdict unchanged) ===")
+            for r in flagged:
+                print(f"  {r['path']}  speedup={r['speedup']:.3g}x")
+
+        out_path.write_text(json.dumps(
+            {"summary": summary, "records": records, "status": "complete"}, indent=2, default=str))
+        print(f"\nwrote {out_path}")
+        return 0
+
     if args.out:
         out_path = Path(args.out)
     elif args.resume:
@@ -519,7 +1015,8 @@ def main():
         print(f"[eval] --resume {resume_path}: {len(prior_records)} sample(s) already evaluated")
 
     records = run_eval(args.language, args.condition, args.model_dir, args.task, Path(args.raw_dir),
-                        checkpoint_path=out_path, prior_records=prior_records)
+                        checkpoint_path=out_path, prior_records=prior_records,
+                        precompile_workers=args.precompile_workers)
     summary = summarize(records)
 
     print("\n=== summary (compiled / correct out of n, generated=parsed-ok count) ===")

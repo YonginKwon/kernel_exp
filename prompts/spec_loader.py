@@ -133,6 +133,24 @@ class PromptSpec:
         self.doc_injection_template = _extract_fenced_block(doc_inject_section).strip("\n")
         repair_section = _section(cond_section, r"^### 3\.3\b")
         self.repair_template = _extract_fenced_block(repair_section).strip("\n")
+
+        # §3.4 multi-turn protocol (2026-08-20, supersedes §3.3's single
+        # repair-only template) -- each of the 5 templates below lives under
+        # its own named heading in PROMPT_SPEC.md specifically so it can be
+        # parsed by name here, not by position in a bullet list.
+        multiturn_section = _section(cond_section, r"^### 3\.4\b")
+        repair_phase_section = _section(multiturn_section, r"^#### 수리 국면 피드백")
+        self.repair_compile_template = _extract_fenced_block(
+            _section(repair_phase_section, r"^##### 컴파일 실패")).strip("\n")
+        self.repair_runtime_template = _extract_fenced_block(
+            _section(repair_phase_section, r"^##### 런타임 실패")).strip("\n")
+        self.repair_correctness_template = _extract_fenced_block(
+            _section(repair_phase_section, r"^##### 정확성 실패")).strip("\n")
+        self.repair_parse_failure_template = _extract_fenced_block(
+            _section(repair_phase_section, r"^##### 파싱 실패")).strip("\n")
+        self.optimization_template = _extract_fenced_block(
+            _section(multiturn_section, r"^#### 최적화 국면 피드백")).strip("\n")
+
         gen_params_section = _section(self.raw, r"^## 4\.")
         self.generation_params = _parse_generation_params(gen_params_section)
 
@@ -154,6 +172,36 @@ class PromptSpec:
 
     def build_repair_prompt(self, compiler_error: str) -> str:
         return self.repair_template.replace("{COMPILER_ERROR_VERBATIM}", compiler_error).strip("\n") + "\n"
+
+    # --- §3.4 multi-turn feedback builders -----------------------------
+    # Each returns ONLY the feedback text -- the caller (scripts/multiturn.py)
+    # concatenates {original turn-1 task prompt} + {previous turn's code} +
+    # {this feedback}, per §3.4's "히스토리 무상태" rule (no chat history,
+    # a single freshly-assembled prompt every turn).
+
+    def build_repair_compile_feedback(self, compiler_error: str) -> str:
+        return self.repair_compile_template.replace(
+            "{COMPILER_ERROR_VERBATIM}", compiler_error).strip("\n") + "\n"
+
+    def build_repair_runtime_feedback(self, runtime_error: str) -> str:
+        return self.repair_runtime_template.replace(
+            "{RUNTIME_ERROR_VERBATIM}", runtime_error).strip("\n") + "\n"
+
+    def build_repair_correctness_feedback(self, max_abs_error, mismatch_fraction) -> str:
+        return (self.repair_correctness_template
+                .replace("{MAX_ABS_ERROR}", str(max_abs_error))
+                .replace("{MISMATCH_FRACTION}", str(mismatch_fraction))
+                .strip("\n") + "\n")
+
+    def build_repair_parse_failure_feedback(self) -> str:
+        return self.repair_parse_failure_template.strip("\n") + "\n"
+
+    def build_optimization_feedback(self, kernel_ms, baseline_ms, speedup) -> str:
+        return (self.optimization_template
+                .replace("{X}", f"{kernel_ms:.4g}")
+                .replace("{Y}", f"{baseline_ms:.4g}")
+                .replace("{Z}", f"{speedup:.3g}")
+                .strip("\n") + "\n")
 
 
 def _parse_generation_params(text: str) -> dict:
