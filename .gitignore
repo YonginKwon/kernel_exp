@@ -4,6 +4,7 @@ results/**/generations/
 results/**/raw/
 results/**/eval/
 results/**/*.log
+results/.eval_build_cache/
 
 # Environment
 .venv/
