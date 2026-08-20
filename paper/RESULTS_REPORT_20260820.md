@@ -13,8 +13,10 @@
 실패가 지배적. 문서 주입은 **gpt-oss엔 4개 언어 전부 강하게 도움**이 되지만
 **Qwen엔 TileLang만 돕고 CUDA·PTX는 오히려 0%로 붕괴**시킨다 — 모델 의존적
 효과로, H3("문서 주입이 LRPL 격차를 줄인다")를 단순 지지하지 않는다. **타이밍
-(speedup)·수리 1턴 프로토콜은 아직 실행되지 않았다** — 이 보고서엔 컴파일률/
-정확률만 있고, 논문 그림1·지표 speedup/fast_1/회복률은 별도 작업 필요.
+(speedup) 측정 완료(§7-1, 226/228)** — 정답 커널은 대체로 PyTorch eager보다
+느리다(geomean 0.2~0.8x, Qwen Triton만 예외적으로 빠른데 이 중 9건은 정확성
+판정 결함으로 인한 착시로 확인돼 제외 후 다시 계산하면 역시 0.5x대). **수리
+1턴(멀티턴) 프로토콜은 아직 실행되지 않았다** — 별도 착수 예정.
 
 ---
 
@@ -219,12 +221,66 @@ Triton은 다른 3언어와 실패 프로파일이 질적으로 다르다 — co
 | 08-20 | 닫히지 않은 코드펜스 허용 — **검토 후 기각** | 1.6%(3/185) 구제 대비 사전 등록 프로토콜 변경 비용이 큼 | 없음(변경 안 함) |
 | 08-20 | `doc_ablation_subset_of_20` 승인 | PI 조건부 사전 승인(Triton 정답 확인 + gpt-oss CUDA 판정 종결) 충족, 층화 재검증(전 계열 5%p 이내) | 없음(과제 선정만) |
 
+## 7-1. 타이밍/speedup 결과 (P0-a, 2026-08-20 완료)
+
+`scripts/evaluate.py --timing` 신설(warmup 25/측정 100/중앙값,
+`torch.cuda.synchronize` 내장 — `kernelbench.timing.time_execution_with_cuda_event`
+직접 호출, KernelBench 자체 `eval_kernel_against_ref`는 warmup을 3으로 하드코딩해
+노출하지 않아 별도 경로로 구현). 베이스라인은 PyTorch eager fp16, 샘플마다 이
+GPU에서 새로 재측정(캐시/문헌 수치 재사용 없음). 결과 파일: `results/eval/timing_20260820.json`.
+
+**대상**: 본 실행 + docinject의 compiled ∧ correct 전수 228건. **226/228(99.1%)
+측정 완료.** 나머지 2건(`cuda/docinject/57_conv_transposed_2D.../sample_1`,
+`tilelang/docinject/97_ScaledDotProductAttention/.../sample_1`)은 재현 가능한
+세그폴트(`torch.cuda.synchronize()` → `cuCtxSynchronize`, 5회 시도·타임아웃
+180→400s로 늘려도 매번 동일 지점에서 재현)로 측정 불가 — **flaky 아님**, 이
+두 샘플에 한정된 문제로 보임(둘 다 상대적으로 무거운 커널: conv-transpose,
+attention). 측정치 없이 데이터에서 결측으로 남김, 판정(compiled/correctness)은
+불변.
+
+| lang | model | condition | n | fast_1 | speedup geomean | excessive(>10x) flagged |
+|---|---|---|---:|---:|---:|---:|
+| cuda | gpt-oss-120b | docinject | 47 | 8 (17.0%) | 0.249x | 0 |
+| ptx | gpt-oss-120b | docinject | 1 | 1 (100%) | 1.00x | 0 |
+| tilelang | gpt-oss-120b | docinject | 28 | 8 (28.6%) | 0.487x | 0 |
+| tilelang | Qwen3-Coder-30B | docinject | 16 | 4 (25.0%) | 0.214x | 0 |
+| triton | gpt-oss-120b | 0shot | 59 | 26 (44.1%) | 0.797x | 0 |
+| triton | gpt-oss-120b | docinject | 32 | 15 (46.9%) | 0.576x | 0 |
+| **triton** | **Qwen3-Coder-30B** | **0shot** | 24 | 18 (75.0%) | **2.13x** | **5** |
+| **triton** | **Qwen3-Coder-30B** | **docinject** | 19 | 10 (52.6%) | **2.38x** | **4** |
+
+### 이상치 — Qwen Triton geomean은 오염돼 있음, 정제된 값을 쓸 것
+
+**9건 전부 `23_Softmax` 한 과제에서만 나왔다**(0-shot 5건, docinject 4건, 전부
+Qwen). speedup 405~1,350x. 원인을 코드까지 직접 확인: 이 과제의 `get_inputs()`가
+`(4096, 393216)` — **행 하나가 393,216열**인 극단적으로 넓은 텐서를 만드는데,
+Qwen이 생성한 Triton 커널은 `BLOCK_SIZE=1024`를 하드코딩하고 열 방향으로
+루프/그리드 분할을 하지 않아 **각 행의 앞 1024열만 계산하고 나머지 39만여
+열은 `torch.empty_like`의 미초기화 메모리로 남긴다**(샘플 하나는 그리드
+launch 자체도 `cdiv(batch_size, BLOCK_SIZE)`로 잘못 설정해 4096행 중 4행만
+처리). 그런데도 **correctness 판정을 통과했다** — 원인은 fp16 atol=rtol=1e-2
+허용오차가, 이 과제의 정상 출력값 크기(softmax 원소 기댓값 ≈ 1/393216 ≈
+2.5e-6)보다 4,000배 가까이 크기 때문으로 보인다: 사실상 아무 값이나 0 근처면
+통과한다. **이건 하니스 버그가 아니라 이 특정 과제의 정확성 판정 기준이
+당초 설계(§SELECTION.md #4.1)가 상정하지 않은 극단적 텐서 크기와 만나 무너진
+사례** — speedup>10x 자동 플래그가 정확히 설계된 목적대로 작동해 잡아낸 것이다.
+**판정은 변경하지 않았다**(PI 지시대로), 다만 이 9건을 뺀 정제된 geomean은
+다음과 같이 근본적으로 다르다:
+
+| lang | model | condition | n(제외 후) | fast_1 | geomean(제외 후) |
+|---|---|---|---:|---:|---:|
+| triton | Qwen3-Coder-30B | 0shot | 19 | 13 (68.4%) | **0.532x** (2.13x 아님) |
+| triton | Qwen3-Coder-30B | docinject | 15 | 6 (40.0%) | **0.559x** (2.38x 아님) |
+
+정제 후 Qwen Triton도 gpt-oss와 마찬가지로 **eager보다 느림**(0.53~0.56x) —
+9건을 포함한 표면적 geomean 2.13x/2.38x는 단일 과제의 정확성 판정 결함이
+만든 착시다. **논문·분석에는 정제된 값(제외 후)을 쓸 것.** 표3(오류 분류)에
+`23_Softmax`류(정확성 판정이 텐서 크기에 취약한 과제) 방법론 캐비어트를
+추가할 필요가 있다 — 향후 유사 과제 재검토 대상.
+
 ## 7. 미완료 / TODO (논문 작성 전 확인 필요)
 
-1. **타이밍/스피드업 측정 미구현.** `scripts/evaluate.py`는 `measure_performance=False`로
-   고정 — CLAUDE.md 지표 목록의 fast_1/speedup geomean, RESEARCH_CONTEXT.md
-   그림1(speedup 분포)이 아직 없음. 베이스라인은 PyTorch eager, 같은 GPU에서
-   매 실행 재측정 원칙(문헌 수치 비교 금지) — 구현 필요.
+1. ~~타이밍/스피드업 측정 미구현~~ — **완료, §7-1 참고 (2026-08-20).**
 2. **수리 1턴(컴파일 에러 메시지만 제공) 프로토콜 미구현.** CLAUDE.md 프로토콜의
    핵심 축 하나 — 회복률 지표가 없음. `scripts/generate.py`에 관련 로직 없음.
 3. **Qwen CUDA 0-shot 실패 133건 중 114건(86%) 재분류 필요** — 캡 상향 전
