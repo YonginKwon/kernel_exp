@@ -60,6 +60,24 @@ STATE_DEFAULT = EVAL_DIR / "multiturn_state.json"
 K_MAX = 10
 NO_IMPROVE_LIMIT = 3  # PROMPT_SPEC #3.4 chain termination condition (2)
 
+# PI instruction 2026-08-21 (item 4): don't leave these blocked indefinitely,
+# retried every single evaluate call's catch-up pass -- terminate them now
+# with the documented reason. Both are the SAME two samples #7-1 already
+# found reproducibly (not flakily) segfault during timing: 5 attempts across
+# P0-a, timeout raised 180->400s, identical crash location (cuCtxSynchronize)
+# every time. Excluded from speedup aggregation (last_timing stays None);
+# their correctness verdict (True) is untouched.
+KNOWN_TIMING_UNMEASURABLE = {
+    "cuda|docinject|57_conv_transposed_2D__square_input__square_kernel|openai/gpt-oss-120b|1":
+        "reproducible segfault in torch.cuda.synchronize() during timing (paper/"
+        "RESULTS_REPORT_20260820.md #7-1): 5 attempts, timeout raised 180->400s, "
+        "identical crash location every time -- not flaky, confirmed unmeasurable.",
+    "tilelang|docinject|97_ScaledDotProductAttention|openai/gpt-oss-120b|1":
+        "reproducible segfault in torch.cuda.synchronize() during timing (paper/"
+        "RESULTS_REPORT_20260820.md #7-1): 5 attempts, timeout raised 180->400s, "
+        "identical crash location every time -- not flaky, confirmed unmeasurable.",
+}
+
 
 def chain_id(language, condition, task, model, sample_index):
     return f"{language}|{condition}|{task}|{model}|{sample_index}"
@@ -337,11 +355,22 @@ def cmd_evaluate(args):
     state = json.loads(state_path.read_text())
     chains = state["chains"]
 
-    # Catch-up pass: any correct chain still missing last_timing (init's
-    # backfill gap, or a prior #7-1-style reproducible-timing-failure) gets
-    # one more attempt here, GPU-exclusive as required. cmd_generate skips
-    # these chains for a round until this succeeds.
-    untimed = [c for c in chains.values() if c["correctness"] and c["last_timing"] is None]
+    # PI item 4 (2026-08-21): terminate the 2 known reproducibly-unmeasurable
+    # chains outright instead of retrying every turn's catch-up pass forever.
+    for cid, reason in KNOWN_TIMING_UNMEASURABLE.items():
+        c = chains.get(cid)
+        if c and not c["terminated"]:
+            c["terminated"], c["termination_reason"] = True, "timing_unmeasurable"
+            c["termination_detail"] = reason
+            print(f"[evaluate] terminating known-unmeasurable chain {cid}: {reason[:80]}...")
+
+    # Catch-up pass: any ACTIVE correct chain still missing last_timing
+    # (init's backfill gap) gets one more attempt here, GPU-exclusive as
+    # required. cmd_generate skips these chains for a round until this
+    # succeeds. Terminated chains (incl. the ones just above) are excluded
+    # -- no more retries for them.
+    untimed = [c for c in chains.values()
+               if c["correctness"] and c["last_timing"] is None and not c["terminated"]]
     if untimed:
         print(f"[evaluate] catch-up timing for {len(untimed)} correct-but-untimed chain(s)...")
         recovered = 0
@@ -454,12 +483,65 @@ def cmd_evaluate(args):
 # report
 # --------------------------------------------------------------------------
 
+def _hist_turn(c, t):
+    for h in c["history"]:
+        if h["turn"] == t:
+            return h
+    return None
+
+
+def _geomean(values):
+    import numpy as np
+    arr = np.array(values, dtype=float)
+    return float(np.exp(np.mean(np.log(arr))))
+
+
 def cmd_report(args):
+    import collections
+    import numpy as np
+
     state = json.loads(Path(args.state).read_text())
     chains = list(state["chains"].values())
-    print(f"total chains: {len(chains)}")
+    max_turn = max((h["turn"] for c in chains for h in c["history"]), default=1)
+    print(f"total chains: {len(chains)}  |  turns present: 1..{max_turn}")
 
-    import collections
+    # ------------------------------------------------------------------
+    # PI item 1 (2026-08-21): primary curves are ever-correct@turn and
+    # best-speedup@turn (both monotonic by construction) -- NOT the
+    # point-in-time correctness table, which the optimization phase can
+    # push down (see the turn1->2 regression finding). Point-in-time stays
+    # as an auxiliary table below.
+    # ------------------------------------------------------------------
+    print("\n=== PRIMARY (a) ever-correct@turn -- cumulative, monotonic ===")
+    print(f"{'turn':4s} {'lang':9s} {'model':28s} {'ever_correct':>12s} {'/n':>6s}")
+    keys = sorted({(c["language"], c["model"].split("/")[-1]) for c in chains})
+    for t in range(1, max_turn + 1):
+        for lang, model in keys:
+            group = [c for c in chains if c["language"] == lang and c["model"].split("/")[-1] == model]
+            if not group:
+                continue
+            ever = sum(1 for c in group if c["best_turn"] is not None and c["best_turn"] <= t)
+            print(f"{t:4d} {lang:9s} {model:28s} {ever:12d} {'/' + str(len(group)):>6s}")
+
+    print("\n=== PRIMARY (b) best-speedup@turn -- geomean of best-so-far, monotonic ===")
+    print(f"{'turn':4s} {'lang':9s} {'model':28s} {'n(timed)':>9s} {'geomean':>9s}")
+    for t in range(1, max_turn + 1):
+        for lang, model in keys:
+            group = [c for c in chains if c["language"] == lang and c["model"].split("/")[-1] == model]
+            best_so_far = []
+            for c in group:
+                vals = [h["speedup"] for h in c["history"]
+                        if h["turn"] <= t and h["correctness"] and h.get("speedup") is not None]
+                if vals:
+                    best_so_far.append(max(vals))
+            if best_so_far:
+                print(f"{t:4d} {lang:9s} {model:28s} {len(best_so_far):9d} {_geomean(best_so_far):9.3g}")
+
+    # ------------------------------------------------------------------
+    # Auxiliary: point-in-time correctness (can fall due to optimize-phase
+    # regressions -- do not use as the headline number, see PRIMARY above).
+    # ------------------------------------------------------------------
+    print("\n=== AUXILIARY: point-in-time correctness@turn (NOT monotonic -- see PRIMARY) ===")
     by_turn_lang = collections.defaultdict(lambda: {"n": 0, "correct": 0, "terminated": 0})
     for c in chains:
         k = (c["turn"], c["language"], c["model"].split("/")[-1])
@@ -467,19 +549,80 @@ def cmd_report(args):
         d["n"] += 1
         d["correct"] += int(c["correctness"])
         d["terminated"] += int(c["terminated"])
-    print(f"\n{'turn':4s} {'lang':9s} {'model':28s} {'n':>5s} {'correct':>7s} {'terminated':>10s}")
+    print(f"{'turn':4s} {'lang':9s} {'model':28s} {'n':>5s} {'correct':>7s} {'terminated':>10s}")
     for k in sorted(by_turn_lang):
         d = by_turn_lang[k]
         print(f"{k[0]:4d} {k[1]:9s} {k[2]:28s} {d['n']:5d} {d['correct']:7d} {d['terminated']:10d}")
 
+    # ------------------------------------------------------------------
+    # PI item 1: per-turn transition 4-class + running cumulative totals.
+    # ------------------------------------------------------------------
+    print("\n=== transition 4-class per turn-step (FF/FT/TF/TT) + cumulative ===")
+    cum = collections.Counter()
+    for t in range(2, max_turn + 1):
+        step = collections.Counter()
+        for c in chains:
+            h1, h2 = _hist_turn(c, t - 1), _hist_turn(c, t)
+            if h1 is None or h2 is None:
+                continue
+            step[(h1["correctness"], h2["correctness"])] += 1
+        cum.update(step)
+        print(f"turn {t-1}->{t}: FF={step[(False,False)]:4d} FT={step[(False,True)]:4d} "
+              f"TF={step[(True,False)]:4d} TT={step[(True,True)]:4d}  |  "
+              f"cumulative: FT={cum[(False,True)]:4d} TF={cum[(True,False)]:4d} "
+              f"net={cum[(False,True)]-cum[(True,False)]:+d}")
+
+    # ------------------------------------------------------------------
+    # PI item 2: 0-shot vs docinject workstream split, latest transition +
+    # turn-1 baseline (answers: is a given language/model's gain workstream-
+    # specific -- feedback-alone vs doc-injection x feedback interaction?).
+    # ------------------------------------------------------------------
+    if max_turn >= 2:
+        print(f"\n=== workstream split (0shot vs docinject), turn 1 baseline and turn {max_turn-1}->{max_turn} transition ===")
+        print(f"{'lang':9s} {'model':28s} {'cond':10s} {'t1_correct':>10s} {'FT(new)':>8s} {'TF(regr)':>9s}")
+        for lang, model in keys:
+            for cond in ("0shot", "docinject"):
+                group = [c for c in chains if c["language"] == lang
+                         and c["model"].split("/")[-1] == model and c["condition"] == cond]
+                if not group:
+                    continue
+                t1_correct = sum(1 for c in group if (_hist_turn(c, 1) or {}).get("correctness"))
+                ft = tf = 0
+                for c in group:
+                    h1, h2 = _hist_turn(c, max_turn - 1), _hist_turn(c, max_turn)
+                    if h1 is None or h2 is None:
+                        continue
+                    if not h1["correctness"] and h2["correctness"]:
+                        ft += 1
+                    elif h1["correctness"] and not h2["correctness"]:
+                        tf += 1
+                print(f"{lang:9s} {model:28s} {cond:10s} {t1_correct:10d} {ft:8d} {tf:9d}")
+
+    # ------------------------------------------------------------------
+    # PI item 3: oscillation tracking (correctness sign-flips across the
+    # full history so far). A chain needs >=3 turns of history to show a
+    # completed oscillation (correct->incorrect->correct or the reverse);
+    # with max_turn < 3 this will read all zero, which is expected, not a bug.
+    # ------------------------------------------------------------------
+    print(f"\n=== oscillation tracking (correctness sign-flips in history, informational only -- no intervention) ===")
+    osc_counts = []
+    for c in chains:
+        seq = [h["correctness"] for h in sorted(c["history"], key=lambda h: h["turn"])]
+        flips = sum(1 for i in range(1, len(seq)) if seq[i] != seq[i - 1])
+        osc_counts.append(flips)
+    osc_hist = collections.Counter(osc_counts)
+    print(f"flip-count distribution across all {len(chains)} chains: {dict(sorted(osc_hist.items()))}")
+    oscillating = sum(1 for f in osc_counts if f >= 2)  # >=2 flips = at least one full back-and-forth
+    print(f"chains with >=2 sign-flips (at least one completed oscillation): {oscillating}")
+
+    # ------------------------------------------------------------------
     term_reasons = collections.Counter(c["termination_reason"] for c in chains if c["terminated"])
     print(f"\ntermination reasons: {dict(term_reasons)}")
 
     speedups = [c["best_speedup"] for c in chains if c["best_speedup"] is not None]
     if speedups:
-        import numpy as np
         print(f"\nchains with a best-so-far correct kernel: {len(speedups)}/{len(chains)}, "
-              f"best_speedup geomean: {float(np.exp(np.mean(np.log(np.array(speedups))))):.3g}x")
+              f"best_speedup geomean: {_geomean(speedups):.3g}x")
     return 0
 
 
