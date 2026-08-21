@@ -80,6 +80,10 @@ def main():
                      help="write partial progress to --out every N chains, so a crash mid-pass "
                           "(this box has crashed 4x in one day -- 2026-08-21) loses at most N "
                           "chains of redone work instead of the whole pass")
+    ap.add_argument("--limit", type=int, default=None,
+                     help="only retime the first N candidate chains -- for a cheap smoke test of "
+                          "the checkpoint/resume + power-drift-check paths before turn 10 actually "
+                          "completes and runs this pass for real unattended. NOT for real results.")
     args = ap.parse_args()
 
     ev.assert_gpu_exclusive()
@@ -93,6 +97,9 @@ def main():
     primary_32 = set(clean_32_tasks())
 
     candidates = [c for c in chains.values() if c.get("best_code")]
+    if args.limit is not None:
+        candidates = candidates[:args.limit]
+        print(f"[final_retiming] --limit {args.limit} -- SMOKE TEST MODE, not a real pass")
     n_primary = sum(1 for c in candidates if c["task"] in primary_32)
     print(f"[final_retiming] {len(candidates)} chain(s) with a best-so-far correct kernel "
           f"({n_primary} on the 32-task primary set, {len(candidates) - n_primary} appendix-only)")
