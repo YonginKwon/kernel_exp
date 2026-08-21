@@ -91,3 +91,15 @@ PyTorch eager fp16 베이스라인 재측정) 중 결함 5과제를 과제 단�
 source scripts/env.sh && source .venv/bin/activate
 python scripts/analyze.py --out results/eval/analysis_<timestamp>.json
 ```
+
+## 재검증 이력
+
+- 2026-08-21 11:14 KST: 08-21 07:19 재부팅 복구 후 재실행, (a)~(d) 4표 전부
+  본 문서 수치와 완전 일치 확인(byte-for-byte). 입력 4개(`full_run_20260819.json`,
+  `docinject_run_20260820T072056.json`, `timing_20260820.json`,
+  `eval_a100_full.json`)는 턴1 스냅샷이라 진행 중인 멀티턴 루프(턴 4+, 별도
+  파일에 기록)의 영향을 받지 않음 — 갱신 불필요, 재현성만 재확인.
+- 2026-08-21 11:40 KST: 11:20 재부팅(2차) 복구 후 독립 재실행(`analysis_verify_
+  20260821T114029.json`)으로 재확인 — (a)~(d) 4표 수치 전부 다시 일치. 두 번째
+  재부팅도 입력 4개 파일을 건드리지 않았음(mtime 전부 2026-08-20, 두 크래시
+  모두 이전).
