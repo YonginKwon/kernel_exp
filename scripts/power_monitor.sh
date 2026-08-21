@@ -45,7 +45,7 @@ read_cpu_busy_pct(){
   fi
   prev_idle=$idle
   prev_total=$total
-  echo "$pct"
+  LAST_CPU_PCT="$pct"
 }
 
 echo "[power_monitor $(date -Iseconds)] started, sampling every ${INTERVAL}s -> $LOG" >&2
@@ -59,7 +59,8 @@ while true; do
   L1=$(echo "$LOADAVG" | cut -d' ' -f1)
   L5=$(echo "$LOADAVG" | cut -d' ' -f2)
   L15=$(echo "$LOADAVG" | cut -d' ' -f3)
-  CPU_PCT=$(read_cpu_busy_pct)
+  read_cpu_busy_pct
+  CPU_PCT="$LAST_CPU_PCT"
   # normalize GPU_LINE "P, T, U, M" -> "P,T,U,M"
   GPU_CSV=$(echo "$GPU_LINE" | tr -d ' ')
   echo "${TS},${GPU_CSV},${L1},${L5},${L15},${CPU_PCT}" >> "$LOG"

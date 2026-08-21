@@ -24,6 +24,7 @@ Run ONCE, after the multi-turn loop exits (turn 10 completion or the
 import argparse
 import json
 import statistics
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -31,6 +32,23 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import evaluate as ev  # noqa: E402
 from analyze import clean_32_tasks, FLAWED_TASKS  # noqa: E402
+
+NO_TURBO_PATH = Path("/sys/devices/system/cpu/intel_pstate/no_turbo")
+
+
+def _power_state():
+    """(no_turbo, gpu_power_limit_w) -- read fresh, no caching. Used both to
+    stamp the output and to verify the environment didn't drift mid-pass
+    (PI requirement: fixed power/turbo state for the whole pass, not just
+    'whatever it happened to be')."""
+    no_turbo = NO_TURBO_PATH.read_text().strip() if NO_TURBO_PATH.exists() else "unknown"
+    try:
+        limit = subprocess.run(
+            ["nvidia-smi", "--query-gpu=power.limit", "--format=csv,noheader,nounits"],
+            capture_output=True, text=True, timeout=10, check=True).stdout.strip()
+    except Exception as e:
+        limit = f"unknown ({e})"
+    return {"cpu_no_turbo": no_turbo, "gpu_power_limit_w": limit}
 
 
 def _build_record(chain):
@@ -42,17 +60,33 @@ def _build_record(chain):
     }
 
 
+def _write(out_path, payload, partial):
+    payload = {**payload, "partial": partial}
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = out_path.with_suffix(out_path.suffix + ".tmp")
+    tmp.write_text(json.dumps(payload, indent=2, default=str))
+    tmp.replace(out_path)  # atomic on the same filesystem -- no torn reads
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                   formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--state", required=True, help="multiturn_state.json path")
     ap.add_argument("--out", required=True, help="output JSON path")
-    ap.add_argument("--power-note", required=True,
-                     help="e.g. '600W cap (no throttle), turbo default, GPU-exclusive, "
-                          "confirmed via power_monitor.log <timestamp range>'")
+    ap.add_argument("--power-note", default=None,
+                     help="optional free-text override/addendum; the actual turbo/power-limit "
+                          "readings are captured automatically at start and end regardless")
+    ap.add_argument("--checkpoint-every", type=int, default=25,
+                     help="write partial progress to --out every N chains, so a crash mid-pass "
+                          "(this box has crashed 4x in one day -- 2026-08-21) loses at most N "
+                          "chains of redone work instead of the whole pass")
     args = ap.parse_args()
 
     ev.assert_gpu_exclusive()
+
+    out_path = Path(args.out)
+    start_power = _power_state()
+    print(f"[final_retiming] power/turbo state at start: {start_power}")
 
     state = json.loads(Path(args.state).read_text())
     chains = state["chains"]
@@ -66,8 +100,50 @@ def main():
         print("[final_retiming] nothing to retime -- refusing to write an empty report")
         return 1
 
+    # Resume support: a prior --out (from a pass this same box's crash
+    # interrupted) already has some chain_ids timed -- skip those instead of
+    # redoing the whole batch. Only trusted if its power/turbo stamp matches
+    # this run's start state, otherwise the two halves wouldn't be
+    # comparable and we start clean.
     results = []
-    for i, c in enumerate(candidates, 1):
+    done_ids = set()
+    if out_path.exists():
+        try:
+            prior = json.loads(out_path.read_text())
+            if prior.get("partial") and prior.get("power_state_start") == start_power:
+                results = prior.get("results", [])
+                done_ids = {r["chain_id"] for r in results}
+                print(f"[final_retiming] resuming from partial {out_path} -- "
+                      f"{len(done_ids)} chain(s) already timed this pass")
+            elif prior.get("partial"):
+                print(f"[final_retiming] found partial {out_path} but power/turbo state differs "
+                      f"from now -- discarding it and starting this pass clean")
+        except Exception as e:
+            print(f"[final_retiming] couldn't read existing {out_path} ({e}) -- starting clean")
+
+    todo = [c for c in candidates if c["chain_id"] not in done_ids]
+
+    def _snapshot(partial, extra=None):
+        payload = {
+            "generated": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+            "power_note": args.power_note,
+            "power_state_start": start_power,
+            "power_state_end": None if partial else _power_state(),
+            "protocol": ("warmup 25 / measure 100 / median, torch.cuda.synchronize, GPU-exclusive "
+                         "(evaluate.py time_one_isolated) -- CLAUDE.md timing protocol"),
+            "note": ("Authoritative timing source for the paper. Turn-loop timing in "
+                     "multiturn_state.json / results/eval/timing_20260820.json is stimulus-only "
+                     "(used for optimize-phase feedback during generation), NOT for reported "
+                     "speedup/fast_1 figures -- see CLAUDE.md item 4 / paper Setup."),
+            "n_chains_total": len(candidates), "n_chains_retimed": len(results),
+            "n_primary_32_chains": n_primary,
+            "flawed_tasks_excluded_from_primary": list(FLAWED_TASKS),
+            "results": results,
+            **(extra or {}),
+        }
+        _write(out_path, payload, partial=partial)
+
+    for i, c in enumerate(todo, 1):
         rec = _build_record(c)
         timing = ev.time_one_isolated(rec, c["best_code"])
         results.append({
@@ -78,8 +154,16 @@ def main():
             "turn_loop_best_speedup": c.get("best_speedup"),
             **timing,
         })
-        if i % 25 == 0 or i == len(candidates):
-            print(f"[final_retiming] {i}/{len(candidates)} done")
+        if i % args.checkpoint_every == 0 or i == len(todo):
+            print(f"[final_retiming] {len(results)}/{len(candidates)} done")
+            _snapshot(partial=True)
+
+    end_power = _power_state()
+    if end_power != start_power:
+        print(f"[final_retiming] FATAL: power/turbo state drifted during the pass -- "
+              f"start={start_power} end={end_power}. Results kept as partial at {out_path}; "
+              f"fix the environment and re-run to resume (matching chains will be skipped).")
+        return 1
 
     n_exceptions = sum(1 for r in results if "timing_exception" in r)
 
@@ -104,26 +188,12 @@ def main():
         print(f"[final_retiming] WARNING: {len(missing_primary_baseline)} primary-32 task(s) have "
               f"NO correct chain to retime, so no baseline either: {missing_primary_baseline}")
 
-    out = {
-        "generated": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
-        "power_note": args.power_note,
-        "protocol": ("warmup 25 / measure 100 / median, torch.cuda.synchronize, GPU-exclusive "
-                     "(evaluate.py time_one_isolated) -- CLAUDE.md timing protocol"),
-        "note": ("Authoritative timing source for the paper. Turn-loop timing in "
-                 "multiturn_state.json / results/eval/timing_20260820.json is stimulus-only "
-                 "(used for optimize-phase feedback during generation), NOT for reported "
-                 "speedup/fast_1 figures -- see CLAUDE.md item 4 / paper Setup."),
-        "n_chains_retimed": len(results),
+    _snapshot(partial=False, extra={
         "n_timing_exceptions": n_exceptions,
-        "n_primary_32_chains": n_primary,
         "missing_primary_32_baseline_tasks": missing_primary_baseline,
-        "flawed_tasks_excluded_from_primary": list(FLAWED_TASKS),
-        "results": results,
         "baseline_by_task": baseline_by_task,
-    }
-    Path(args.out).parent.mkdir(parents=True, exist_ok=True)
-    Path(args.out).write_text(json.dumps(out, indent=2, default=str))
-    print(f"[final_retiming] wrote {args.out} -- {len(results)} kernel(s) retimed "
+    })
+    print(f"[final_retiming] wrote {out_path} -- {len(results)} kernel(s) retimed "
           f"({n_exceptions} timing exception(s)), {len(baseline_by_task)} distinct task baseline(s)")
     return 0
 
