@@ -88,7 +88,15 @@ def _feedback_for(chain, spec):
     outcome. Only the aggregate stats go in for correctness failures (no
     reference tensor values, PROMPT_SPEC #3.4)."""
     gs = chain["gen_status"]
-    if gs in ("truncated", "format_failure"):
+    # "request_error" (generate()'s vLLM call itself raised -- network/API
+    # exception, e.g. a crash mid-request) means chain["code"] is None, same
+    # as truncated/format_failure: no previous solution exists at all. Found
+    # 2026-08-21: routed through the generic not-compiled branch below
+    # instead, which built a fake "failed to compile with error: {}" from
+    # the empty metadata dict -- misrepresenting a dead generation request
+    # as a compile failure. All 164 of the turn-4 reboot-storm chains hit
+    # this (see 301bc04); this fix only prevents recurrence in later turns.
+    if gs in ("truncated", "format_failure", "request_error"):
         return spec.build_repair_parse_failure_feedback(), "repair"
     if not chain["compiled"]:
         md = chain.get("metadata") or {}
