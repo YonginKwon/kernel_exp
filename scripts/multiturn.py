@@ -424,7 +424,18 @@ def cmd_evaluate(args):
         c["code"] = code
         c["compiled"] = bool(result.get("compiled"))
         c["correctness"] = bool(result.get("correctness"))
-        c["metadata"] = result.get("metadata") or {}
+        # result's diagnostic text isn't always under "metadata" -- e.g.
+        # eval_one_isolated's no-result fallback (subprocess crash/timeout,
+        # evaluate.py's _eval_worker_entry docstring) puts it under
+        # "eval_exception" instead. `or {}` used to silently discard that
+        # (found 2026-08-21: 164 turn-4 chains recorded compiled=False with
+        # completely empty metadata, losing exactly the info needed to tell
+        # "genuinely buggy kernel" apart from "eval subprocess crashed for
+        # an environment reason" -- can't recover the already-lost ones, but
+        # keep it for every turn from here on).
+        c["metadata"] = result.get("metadata") or {
+            k: v for k, v in result.items() if k not in ("compiled", "correctness")
+        }
         c["last_timing"] = None
 
         if c["correctness"]:
@@ -520,7 +531,13 @@ def cmd_report(args):
             group = [c for c in chains if c["language"] == lang and c["model"].split("/")[-1] == model]
             if not group:
                 continue
-            ever = sum(1 for c in group if c["best_turn"] is not None and c["best_turn"] <= t)
+            # NOT c["best_turn"] -- that's only set when a correct turn's
+            # timing ALSO succeeded (see cmd_evaluate), so a chain that was
+            # correct but hit a timing exception (the #7-1-style reproducible
+            # segfault cases) would silently never count as ever-correct.
+            # Recompute directly from history's correctness bools instead.
+            ever = sum(1 for c in group
+                       if any(h["correctness"] for h in c["history"] if h["turn"] <= t))
             print(f"{t:4d} {lang:9s} {model:28s} {ever:12d} {'/' + str(len(group)):>6s}")
 
     print("\n=== PRIMARY (b) best-speedup@turn -- geomean of best-so-far, monotonic ===")
@@ -553,6 +570,29 @@ def cmd_report(args):
     for k in sorted(by_turn_lang):
         d = by_turn_lang[k]
         print(f"{k[0]:4d} {k[1]:9s} {k[2]:28s} {d['n']:5d} {d['correct']:7d} {d['terminated']:10d}")
+
+    # ------------------------------------------------------------------
+    # Denominator caveat: any compile/correctness rate above is computed
+    # over ALL chains at that turn, including ones whose generation was
+    # truncated (max_tokens cut) or unparseable (format_failure) -- those
+    # never had a chance to compile at all. PTX is the language where this
+    # denominator inflation is largest (see #3.4 pilot notes), so call it
+    # out explicitly per turn/lang rather than let a reader silently divide
+    # a compile rate by a denominator that includes unparseable samples.
+    # ------------------------------------------------------------------
+    print("\n=== denominator caveat: truncated/format_failure generations by turn x lang "
+          "(these count in the 'n' above but never had a chance to compile) ===")
+    by_turn_lang_bad = collections.defaultdict(int)
+    for c in chains:
+        for h in c["history"]:
+            if h.get("gen_status") in ("truncated", "format_failure"):
+                by_turn_lang_bad[(h["turn"], c["language"])] += 1
+    for k in sorted(by_turn_lang_bad):
+        t, lang = k
+        n_lang_turn = sum(1 for c in chains if c["language"] == lang
+                           and any(h["turn"] == t for h in c["history"]))
+        print(f"turn {t:2d} {lang:9s}: {by_turn_lang_bad[k]:4d}/{n_lang_turn} "
+              f"unparseable (truncated or format_failure)")
 
     # ------------------------------------------------------------------
     # PI item 1: per-turn transition 4-class + running cumulative totals.
