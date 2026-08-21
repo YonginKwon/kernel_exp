@@ -439,7 +439,11 @@ def eval_one_isolated(record: dict, timeout: int = 300, precompiled_build_dir: s
 
 
 PRECOMPILE_BUILD_ROOT = REPO_ROOT / "results" / ".eval_build_cache"
-PRECOMPILE_WORKERS = 16  # PI instruction 2026-08-20 (P0-b): nvcc workers >= 16
+# PI instruction 2026-08-20 (P0-b) set nvcc workers >= 16 for throughput.
+# PI instruction 2026-08-21 (post 14:25 power-loss crash, GPU power cap
+# rejected -- 600W stays): halved to 8 to cut the CPU compile-phase power
+# peak instead. Throughput/wall-clock trade-off accepted deliberately.
+PRECOMPILE_WORKERS = 8
 
 
 def deterministic_build_dir(path: str) -> Path:
