@@ -646,6 +646,32 @@ def cmd_report(args):
                         tf += 1
                 print(f"{lang:9s} {model:28s} {cond:10s} {t1_correct:10d} {ft:8d} {tf:9d}")
 
+        # PI request 2026-08-21 (post turn-5 report): the workstream split's
+        # decisive finding was in the CUMULATIVE picture (e.g. TileLang
+        # recovery concentrated almost entirely in docinject across the
+        # whole run), not any single turn-step -- add it explicitly rather
+        # than making a reader sum turn-steps by hand.
+        print(f"\n=== workstream split (0shot vs docinject), CUMULATIVE FT/TF summed over all "
+              f"turn-steps 1->2 .. {max_turn-1}->{max_turn} ===")
+        print(f"{'lang':9s} {'model':28s} {'cond':10s} {'FT(cum)':>8s} {'TF(cum)':>8s} {'net':>6s}")
+        for lang, model in keys:
+            for cond in ("0shot", "docinject"):
+                group = [c for c in chains if c["language"] == lang
+                         and c["model"].split("/")[-1] == model and c["condition"] == cond]
+                if not group:
+                    continue
+                ft_cum = tf_cum = 0
+                for c in group:
+                    for t in range(2, max_turn + 1):
+                        h1, h2 = _hist_turn(c, t - 1), _hist_turn(c, t)
+                        if h1 is None or h2 is None:
+                            continue
+                        if not h1["correctness"] and h2["correctness"]:
+                            ft_cum += 1
+                        elif h1["correctness"] and not h2["correctness"]:
+                            tf_cum += 1
+                print(f"{lang:9s} {model:28s} {cond:10s} {ft_cum:8d} {tf_cum:8d} {ft_cum-tf_cum:+6d}")
+
     # ------------------------------------------------------------------
     # PI item 3: oscillation tracking (correctness sign-flips across the
     # full history so far). A chain needs >=3 turns of history to show a
