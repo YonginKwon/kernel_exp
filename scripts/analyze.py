@@ -15,6 +15,7 @@ Usage:
     python scripts/analyze.py [--out results/eval/analysis_<timestamp>.json]
 """
 import argparse
+import csv
 import json
 import sys
 from pathlib import Path
@@ -24,6 +25,7 @@ import numpy as np
 REPO_ROOT = Path(__file__).parent.parent
 EVAL_DIR = REPO_ROOT / "results" / "eval"
 TASKS_PATH = REPO_ROOT / "tasks" / "level1_subset.json"
+FIGURES_DIR_DEFAULT = REPO_ROOT / "paper" / "figures_data"
 
 # The 5 tasks flagged by scripts/audit_tolerance.py, 2026-08-20 (see
 # paper/RESULTS_REPORT_20260820.md #7-2 and prompts/PROMPT_SPEC.md #3.4 for
@@ -195,6 +197,95 @@ def a100_cross_comparison(pro6000_path, a100_path):
     return out
 
 
+def write_csv(rows, out_path, fieldnames):
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(out_path, "w", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=fieldnames)
+        w.writeheader()
+        for row in rows:
+            w.writerow(row)
+    print(f"[analyze] wrote {out_path} ({len(rows)} rows)")
+
+
+def fig1_ever_correct_rows(state, hardware="sm_120"):
+    """paper/figures_data/fig1_ever_correct.csv rows -- see PI spec in
+    paper/FINAL_DELIVERABLES.md #1. One row per (turn, lang, model,
+    condition), turn 1..max_turn. ever_correct is recomputed directly from
+    history[].correctness (NOT chain['best_turn'] -- best_turn is only set
+    when a correct turn's timing ALSO succeeded, so it silently undercounts
+    a chain that was correct but hit a timing exception; see
+    multiturn.py cmd_report's PRIMARY(a) comment for the same fix applied
+    there). A terminated chain stays in its group at every turn -- its
+    contribution to `ever` is already monotonic by construction (it only
+    ever gets counted once it was actually correct by that turn), so
+    terminated chains need no special-casing to "hold" their value."""
+    chains = list(state["chains"].values())
+    max_turn = max((h["turn"] for c in chains for h in c["history"]), default=1)
+    keys = sorted({(c["language"], c["model"].split("/")[-1]) for c in chains})
+    rows = []
+    for t in range(1, max_turn + 1):
+        for lang, model in keys:
+            for cond in ("0shot", "docinject"):
+                group = [c for c in chains if c["language"] == lang
+                         and c["model"].split("/")[-1] == model and c["condition"] == cond]
+                if not group:
+                    continue
+                ever = sum(1 for c in group
+                           if any(h["correctness"] for h in c["history"] if h["turn"] <= t))
+                rows.append({"hardware": hardware, "turn": t, "lang": lang, "model": model,
+                             "condition": cond, "ever_correct": ever, "n": len(group)})
+    return rows
+
+
+def fig2_speedup_rows(state, hardware="sm_120"):
+    """paper/figures_data/fig2_speedup.csv rows -- see PI spec in
+    paper/FINAL_DELIVERABLES.md #1. Turn-loop (in-chain) best-so-far
+    speedup trajectory, same basis as the turn report's PRIMARY(b) table --
+    NOT the final re-timing pass (that's final_retiming_summary_rows below,
+    the sole speedup source for the paper's actual numbers)."""
+    chains = list(state["chains"].values())
+    max_turn = max((h["turn"] for c in chains for h in c["history"]), default=1)
+    keys = sorted({(c["language"], c["model"].split("/")[-1]) for c in chains})
+    rows = []
+    for t in range(1, max_turn + 1):
+        for lang, model in keys:
+            group = [c for c in chains if c["language"] == lang and c["model"].split("/")[-1] == model]
+            best_so_far = []
+            for c in group:
+                vals = [h["speedup"] for h in c["history"]
+                        if h["turn"] <= t and h["correctness"] and h.get("speedup") is not None]
+                if vals:
+                    best_so_far.append(max(vals))
+            if best_so_far:
+                arr = np.array(best_so_far, dtype=float)
+                rows.append({"hardware": hardware, "turn": t, "lang": lang, "model": model,
+                             "n_timed": len(best_so_far),
+                             "geomean_best_speedup": float(np.exp(np.mean(np.log(arr))))})
+    return rows
+
+
+def final_retiming_summary_rows(retiming_json_path):
+    """paper/figures_data/final_retiming_summary.csv rows -- see PI spec in
+    paper/FINAL_DELIVERABLES.md #1. Reads a scripts/final_retiming.py output
+    JSON (results/eval/final_timing_*.json). This CSV -- not fig2_speedup.csv
+    above, and not any turn-loop number in multiturn_state.json -- is the
+    ONLY source the paper's reported speedup/fast_1 figures may cite
+    (CLAUDE.md item 4 / final_retiming.py's own docstring)."""
+    data = load_json(retiming_json_path)
+    results = [r for r in data["results"] if "timing_exception" not in r]
+    by = {}
+    for r in results:
+        k = (r["language"], r["model"].split("/")[-1], r["condition"])
+        by.setdefault(k, []).append(r["speedup"])
+    rows = []
+    for (lang, model, cond), sp in sorted(by.items()):
+        arr = np.array(sp, dtype=float)
+        rows.append({"lang": lang, "model": model, "condition": cond, "n": len(arr),
+                     "geomean": float(np.exp(np.mean(np.log(arr)))),
+                     "fast_1": int((arr > 1).sum())})
+    return rows
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--full-run", default=str(EVAL_DIR / "full_run_20260819.json"))
@@ -203,6 +294,15 @@ def main():
     ap.add_argument("--a100", default=str(EVAL_DIR / "eval_a100_full.json"),
                     help="from `git show origin/results-a100:results/eval/eval_a100_full.json`")
     ap.add_argument("--out", default=None, help="default: results/eval/analysis_<timestamp>.json")
+    ap.add_argument("--multiturn-state", default=str(EVAL_DIR / "multiturn_state.json"),
+                    help="drives fig1_ever_correct.csv / fig2_speedup.csv (paper/FINAL_DELIVERABLES.md #1)")
+    ap.add_argument("--figures-dir", default=str(FIGURES_DIR_DEFAULT))
+    ap.add_argument("--hardware", default="sm_120", help="stamped into fig1_ever_correct.csv/fig2_speedup.csv")
+    ap.add_argument("--final-retiming", default=None,
+                    help="path to a results/eval/final_timing_*.json (scripts/final_retiming.py "
+                         "output) -- only exists after the multi-turn loop completes turn 10 / "
+                         "hits the cutoff. Produces final_retiming_summary.csv, the SOLE source "
+                         "the paper's speedup/fast_1 numbers may cite (not fig2_speedup.csv).")
     args = ap.parse_args()
 
     print(f"[analyze] primary basis: {len(clean_32_tasks())} clean tasks "
@@ -216,6 +316,25 @@ def main():
     if Path(args.timing).exists():
         results["speedup"] = speedup_table(args.timing)
     results["a100_cross"] = a100_cross_comparison(args.full_run, args.a100)
+
+    figures_dir = Path(args.figures_dir)
+    if Path(args.multiturn_state).exists():
+        state = json.loads(Path(args.multiturn_state).read_text())
+        write_csv(fig1_ever_correct_rows(state, hardware=args.hardware),
+                  figures_dir / "fig1_ever_correct.csv",
+                  ["hardware", "turn", "lang", "model", "condition", "ever_correct", "n"])
+        write_csv(fig2_speedup_rows(state, hardware=args.hardware),
+                  figures_dir / "fig2_speedup.csv",
+                  ["hardware", "turn", "lang", "model", "n_timed", "geomean_best_speedup"])
+    else:
+        print(f"[analyze] SKIPPED fig1/fig2 CSVs -- {args.multiturn_state} not found")
+    if args.final_retiming:
+        if Path(args.final_retiming).exists():
+            write_csv(final_retiming_summary_rows(args.final_retiming),
+                      figures_dir / "final_retiming_summary.csv",
+                      ["lang", "model", "condition", "n", "geomean", "fast_1"])
+        else:
+            print(f"[analyze] SKIPPED final_retiming_summary.csv -- {args.final_retiming} not found")
 
     import time
     out_path = Path(args.out) if args.out else EVAL_DIR / f"analysis_{time.strftime('%Y%m%dT%H%M%S')}.json"
