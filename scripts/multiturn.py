@@ -548,6 +548,30 @@ def cmd_report(args):
                        if any(h["correctness"] for h in c["history"] if h["turn"] <= t))
             print(f"{t:4d} {lang:9s} {model:28s} {ever:12d} {'/' + str(len(group)):>6s}")
 
+    # ------------------------------------------------------------------
+    # PI request 2026-08-22 (post turn-8 report): ever-correct@turn split
+    # by workstream (0shot vs docinject) rather than pooled across both --
+    # this is the evidence base for Figure 1's condition-split lines and
+    # the revised §5 sentence, so print counts AND the ratio against each
+    # condition's own denominator (0shot n=160, docinject n=85 per
+    # lang x model -- NOT 245; pooling them under /245 would understate
+    # docinject's rate since it's the smaller subset).
+    # ------------------------------------------------------------------
+    print("\n=== PRIMARY (a'): ever-correct@turn split by workstream (0shot vs docinject) ===")
+    print(f"{'turn':4s} {'lang':9s} {'model':28s} {'cond':10s} {'ever_correct':>12s} {'/n':>6s} {'ratio':>7s}")
+    for t in range(1, max_turn + 1):
+        for lang, model in keys:
+            for cond in ("0shot", "docinject"):
+                group = [c for c in chains if c["language"] == lang
+                         and c["model"].split("/")[-1] == model and c["condition"] == cond]
+                if not group:
+                    continue
+                ever = sum(1 for c in group
+                           if any(h["correctness"] for h in c["history"] if h["turn"] <= t))
+                ratio = ever / len(group)
+                print(f"{t:4d} {lang:9s} {model:28s} {cond:10s} {ever:12d} "
+                      f"{'/' + str(len(group)):>6s} {ratio:7.1%}")
+
     print("\n=== PRIMARY (b) best-speedup@turn -- geomean of best-so-far, monotonic ===")
     print(f"{'turn':4s} {'lang':9s} {'model':28s} {'n(timed)':>9s} {'geomean':>9s}")
     for t in range(1, max_turn + 1):
