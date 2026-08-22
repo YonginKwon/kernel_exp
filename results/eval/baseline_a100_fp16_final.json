@@ -1,0 +1,387 @@
+{
+  "protocol": {
+    "warmup": 25,
+    "trials": 100,
+    "stat": "median",
+    "precision": "fp16",
+    "timing_method": "cuda_event",
+    "discard_first": 1
+  },
+  "env": {
+    "torch_version": "2.5.1+cu121",
+    "cuda_version": "12.1",
+    "gpu_name": "NVIDIA A100 80GB PCIe",
+    "compute_capability": [
+      8,
+      0
+    ],
+    "driver_version": "535.309.01\n535.309.01",
+    "hardware_tag": "A100-80GB, sm_80"
+  },
+  "timestamp": "2026-08-22T20:41:14+0900",
+  "task_count": 37,
+  "failed_count": 1,
+  "results": {
+    "1_Square_matrix_multiplication_": {
+      "mean": 0.539,
+      "std": 0.00879,
+      "min": 0.528,
+      "max": 0.558,
+      "num_trials": 100,
+      "hardware": "NVIDIA A100 80GB PCIe",
+      "device": "cuda:0",
+      "median": 0.5386
+    },
+    "2_Standard_matrix_multiplication_": {
+      "mean": 0.563,
+      "std": 0.0108,
+      "min": 0.539,
+      "max": 0.572,
+      "num_trials": 100,
+      "hardware": "NVIDIA A100 80GB PCIe",
+      "device": "cuda:0",
+      "median": 0.5693
+    },
+    "3_Batched_matrix_multiplication": {
+      "mean": 1.3,
+      "std": 0.0124,
+      "min": 1.27,
+      "max": 1.31,
+      "num_trials": 100,
+      "hardware": "NVIDIA A100 80GB PCIe",
+      "device": "cuda:0",
+      "median": 1.297
+    },
+    "4_Matrix_vector_multiplication_": {
+      "mean": 2.51,
+      "std": 0.087,
+      "min": 2.44,
+      "max": 2.79,
+      "num_trials": 100,
+      "hardware": "NVIDIA A100 80GB PCIe",
+      "device": "cuda:0",
+      "median": 2.485
+    },
+    "6_Matmul_with_large_K_dimension_": {
+      "mean": 0.421,
+      "std": 0.00257,
+      "min": 0.416,
+      "max": 0.428,
+      "num_trials": 100,
+      "hardware": "NVIDIA A100 80GB PCIe",
+      "device": "cuda:0",
+      "median": 0.4209
+    },
+    "8_Matmul_with_irregular_shapes_": {
+      "mean": 3.44,
+      "std": 0.0217,
+      "min": 3.42,
+      "max": 3.48,
+      "num_trials": 100,
+      "hardware": "NVIDIA A100 80GB PCIe",
+      "device": "cuda:0",
+      "median": 3.426
+    },
+    "17_Matmul_with_transposed_B": {
+      "mean": 0.582,
+      "std": 0.00935,
+      "min": 0.561,
+      "max": 0.595,
+      "num_trials": 100,
+      "hardware": "NVIDIA A100 80GB PCIe",
+      "device": "cuda:0",
+      "median": 0.5862
+    },
+    "19_ReLU": {
+      "mean": 3.8,
+      "std": 0.0336,
+      "min": 3.78,
+      "max": 3.91,
+      "num_trials": 100,
+      "hardware": "NVIDIA A100 80GB PCIe",
+      "device": "cuda:0",
+      "median": 3.786
+    },
+    "21_Sigmoid": {
+      "mean": 4.22,
+      "std": 0.0736,
+      "min": 4.19,
+      "max": 4.91,
+      "num_trials": 100,
+      "hardware": "NVIDIA A100 80GB PCIe",
+      "device": "cuda:0",
+      "median": 4.198
+    },
+    "22_Tanh": {
+      "mean": 4.12,
+      "std": 0.0811,
+      "min": 4.1,
+      "max": 4.92,
+      "num_trials": 100,
+      "hardware": "NVIDIA A100 80GB PCIe",
+      "device": "cuda:0",
+      "median": 4.109
+    },
+    "25_Swish": {
+      "mean": 9.77,
+      "std": 0.0779,
+      "min": 9.7,
+      "max": 9.95,
+      "num_trials": 100,
+      "hardware": "NVIDIA A100 80GB PCIe",
+      "device": "cuda:0",
+      "median": 9.738
+    },
+    "26_GELU_": {
+      "mean": 4.7,
+      "std": 0.0294,
+      "min": 4.6,
+      "max": 4.73,
+      "num_trials": 100,
+      "hardware": "NVIDIA A100 80GB PCIe",
+      "device": "cuda:0",
+      "median": 4.693
+    },
+    "23_Softmax": {
+      "mean": 7.84,
+      "std": 0.0696,
+      "min": 7.78,
+      "max": 8.08,
+      "num_trials": 100,
+      "hardware": "NVIDIA A100 80GB PCIe",
+      "device": "cuda:0",
+      "median": 7.8
+    },
+    "33_BatchNorm": {
+      "mean": 22.5,
+      "std": 0.276,
+      "min": 22.4,
+      "max": 23.9,
+      "num_trials": 100,
+      "hardware": "NVIDIA A100 80GB PCIe",
+      "device": "cuda:0",
+      "median": 22.43
+    },
+    "35_GroupNorm_": {
+      "mean": 15.6,
+      "std": 0.23,
+      "min": 15.5,
+      "max": 16.5,
+      "num_trials": 100,
+      "hardware": "NVIDIA A100 80GB PCIe",
+      "device": "cuda:0",
+      "median": 15.46
+    },
+    "36_RMSNorm_": {
+      "mean": 16.2,
+      "std": 0.0695,
+      "min": 16.1,
+      "max": 16.4,
+      "num_trials": 100,
+      "hardware": "NVIDIA A100 80GB PCIe",
+      "device": "cuda:0",
+      "median": 16.13
+    },
+    "40_LayerNorm": {
+      "mean": 9.97,
+      "std": 0.116,
+      "min": 9.81,
+      "max": 10.2,
+      "num_trials": 100,
+      "hardware": "NVIDIA A100 80GB PCIe",
+      "device": "cuda:0",
+      "median": 9.928
+    },
+    "39_L2Norm_": {
+      "mean": 12.4,
+      "std": 0.149,
+      "min": 12.3,
+      "max": 13.0,
+      "num_trials": 100,
+      "hardware": "NVIDIA A100 80GB PCIe",
+      "device": "cuda:0",
+      "median": 12.39
+    },
+    "41_Max_Pooling_1D": {
+      "mean": 17.3,
+      "std": 0.0573,
+      "min": 17.3,
+      "max": 17.6,
+      "num_trials": 100,
+      "hardware": "NVIDIA A100 80GB PCIe",
+      "device": "cuda:0",
+      "median": 17.31
+    },
+    "42_Max_Pooling_2D": {
+      "mean": 17.7,
+      "std": 0.00283,
+      "min": 17.7,
+      "max": 17.7,
+      "num_trials": 100,
+      "hardware": "NVIDIA A100 80GB PCIe",
+      "device": "cuda:0",
+      "median": 17.66
+    },
+    "44_Average_Pooling_1D": {
+      "mean": 13.6,
+      "std": 0.0273,
+      "min": 13.6,
+      "max": 13.7,
+      "num_trials": 100,
+      "hardware": "NVIDIA A100 80GB PCIe",
+      "device": "cuda:0",
+      "median": 13.58
+    },
+    "47_Sum_reduction_over_a_dimension": {
+      "mean": 3.09,
+      "std": 0.132,
+      "min": 2.95,
+      "max": 3.32,
+      "num_trials": 100,
+      "hardware": "NVIDIA A100 80GB PCIe",
+      "device": "cuda:0",
+      "median": 3.004
+    },
+    "48_Mean_reduction_over_a_dimension": {
+      "mean": 3.0,
+      "std": 0.0226,
+      "min": 2.98,
+      "max": 3.21,
+      "num_trials": 100,
+      "hardware": "NVIDIA A100 80GB PCIe",
+      "device": "cuda:0",
+      "median": 2.993
+    },
+    "49_Max_reduction_over_a_dimension": {
+      "mean": 3.79,
+      "std": 0.0214,
+      "min": 3.76,
+      "max": 3.91,
+      "num_trials": 100,
+      "hardware": "NVIDIA A100 80GB PCIe",
+      "device": "cuda:0",
+      "median": 3.793
+    },
+    "51_Argmax_over_a_dimension": {
+      "mean": 4.69,
+      "std": 0.0499,
+      "min": 4.68,
+      "max": 5.18,
+      "num_trials": 100,
+      "hardware": "NVIDIA A100 80GB PCIe",
+      "device": "cuda:0",
+      "median": 4.684
+    },
+    "50_conv_standard_2D__square_input__square_kernel": {
+      "mean": 3.5,
+      "std": 0.0128,
+      "min": 3.49,
+      "max": 3.6,
+      "num_trials": 100,
+      "hardware": "NVIDIA A100 80GB PCIe",
+      "device": "cuda:0",
+      "median": 3.497
+    },
+    "67_conv_standard_1D": {
+      "mean": 4.22,
+      "std": 0.0658,
+      "min": 4.18,
+      "max": 4.83,
+      "num_trials": 100,
+      "hardware": "NVIDIA A100 80GB PCIe",
+      "device": "cuda:0",
+      "median": 4.207
+    },
+    "54_conv_standard_3D__square_input__square_kernel": {
+      "mean": 3.24,
+      "std": 0.0649,
+      "min": 3.2,
+      "max": 3.86,
+      "num_trials": 100,
+      "hardware": "NVIDIA A100 80GB PCIe",
+      "device": "cuda:0",
+      "median": 3.228
+    },
+    "82_conv_depthwise_2D_square_input_square_kernel": {
+      "mean": 0.928,
+      "std": 0.0902,
+      "min": 0.868,
+      "max": 1.8,
+      "num_trials": 100,
+      "hardware": "NVIDIA A100 80GB PCIe",
+      "device": "cuda:0",
+      "median": 0.9318
+    },
+    "57_conv_transposed_2D__square_input__square_kernel": {
+      "mean": 7.23,
+      "std": 0.193,
+      "min": 7.04,
+      "max": 7.93,
+      "num_trials": 100,
+      "hardware": "NVIDIA A100 80GB PCIe",
+      "device": "cuda:0",
+      "median": 7.181
+    },
+    "76_conv_standard_1D_dilated_strided__": {
+      "mean": 16.7,
+      "std": 0.313,
+      "min": 16.3,
+      "max": 18.5,
+      "num_trials": 100,
+      "hardware": "NVIDIA A100 80GB PCIe",
+      "device": "cuda:0",
+      "median": 16.62
+    },
+    "89_cumsum": {
+      "mean": 7.54,
+      "std": 0.0665,
+      "min": 7.49,
+      "max": 8.09,
+      "num_trials": 100,
+      "hardware": "NVIDIA A100 80GB PCIe",
+      "device": "cuda:0",
+      "median": 7.522
+    },
+    "90_cumprod": {
+      "mean": 7.51,
+      "std": 0.0604,
+      "min": 7.49,
+      "max": 8.1,
+      "num_trials": 100,
+      "hardware": "NVIDIA A100 80GB PCIe",
+      "device": "cuda:0",
+      "median": 7.499
+    },
+    "94_MSELoss": {
+      "mean": 7.6,
+      "std": 0.0971,
+      "min": 7.54,
+      "max": 7.86,
+      "num_trials": 100,
+      "hardware": "NVIDIA A100 80GB PCIe",
+      "device": "cuda:0",
+      "median": 7.57
+    },
+    "95_CrossEntropyLoss": null,
+    "100_HingeLoss": {
+      "mean": 10.9,
+      "std": 0.0961,
+      "min": 10.8,
+      "max": 11.1,
+      "num_trials": 100,
+      "hardware": "NVIDIA A100 80GB PCIe",
+      "device": "cuda:0",
+      "median": 10.81
+    },
+    "97_ScaledDotProductAttention": {
+      "mean": 16.1,
+      "std": 0.518,
+      "min": 15.7,
+      "max": 18.8,
+      "num_trials": 100,
+      "hardware": "NVIDIA A100 80GB PCIe",
+      "device": "cuda:0",
+      "median": 15.92
+    }
+  }
+}
