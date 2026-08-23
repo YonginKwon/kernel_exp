@@ -1,0 +1,14 @@
+lang,model,condition,n,geomean,fast_1
+cuda,Qwen3-Coder-30B-A3B-Instruct,0shot,1,0.9995392393591591,0
+cuda,Qwen3-Coder-30B-A3B-Instruct,docinject,29,0.28024909749965105,2
+cuda,gpt-oss-120b,0shot,54,0.7276343083865536,25
+cuda,gpt-oss-120b,docinject,65,0.7448510303750586,30
+ptx,gpt-oss-120b,docinject,5,0.8651755694492463,1
+tilelang,Qwen3-Coder-30B-A3B-Instruct,0shot,24,1.0644306383201652,18
+tilelang,Qwen3-Coder-30B-A3B-Instruct,docinject,22,0.6138482521307803,10
+tilelang,gpt-oss-120b,0shot,62,0.9545402856107945,38
+tilelang,gpt-oss-120b,docinject,50,0.8770057888917744,21
+triton,Qwen3-Coder-30B-A3B-Instruct,0shot,36,0.9562691628148304,20
+triton,Qwen3-Coder-30B-A3B-Instruct,docinject,17,0.9261371174008826,11
+triton,gpt-oss-120b,0shot,82,1.1996832918313913,53
+triton,gpt-oss-120b,docinject,53,0.8362085601892586,23
