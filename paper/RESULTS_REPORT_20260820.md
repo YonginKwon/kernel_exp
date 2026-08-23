@@ -328,8 +328,17 @@ correctness는 그대로, speedup 집계에서만 이 3개 과제를 뺀다.
 0.487x→0.713x) — 이 3개 과제에서 gpt-oss 커널의 speedup이 유독 낮았다는
 뜻이므로 제외하면 평균이 올라간다. triton|Qwen 두 셀은 **크게 낮아진다**
 (2.13x/2.38x → 1.12x/0.849x) — `23_Softmax`의 405~1,350x 허위 speedup이
-빠지는 효과가 지배적이다. 8셀 중 유일하게 triton|gpt-oss-120b|0shot이
-정제 후 처음으로 fast_1 50%를 넘는다(53.1%) — 표3 서술 시 참고.
+빠지는 효과가 지배적이다. **정정 (2026-08-23, 표 자체와 모순되는 각주 발견)**:
+"8셀 중 유일하게 triton|gpt-oss-120b|0shot이 50%를 넘는다"는 틀렸다 — 바로 이
+표에서 triton|gpt-oss-120b|docinject도 53.6%(15/28), triton|Qwen3-Coder-30B|0shot도
+92.9%(13/14)로 50%를 넘고, triton|Qwen3-Coder-30B|docinject은 정확히 50.0%(6/12)로
+동률이다. 정제 후 **8셀 중 3셀이 fast_1 50%를 넘고(모두 triton), 1셀은 동률** —
+"유일하게"가 아니라 "triton 4셀 중 3셀 초과·1셀 동률, non-triton 4셀은 전부 미만"이
+정확한 서술이다. fast_1의 분모는 과제 단위가 아니라 **정답 판정 + 타이밍 측정
+둘 다 성공한 샘플 단위**다(`scripts/analyze.py`의 `speedup_table()`이 호출하는
+`agg()`: records를 (language, model, condition)별로 묶어 그 안에서
+`speedup > 1`인 레코드 개수를 세는 방식 — 레코드 1개 = 샘플 1개, 과제가 아님).
+표3 서술 시 이 정정된 문장을 참고.
 
 ### 근거: 왜 과제 전체를 신뢰할 수 없나
 

@@ -358,6 +358,70 @@ directly: use 556 (or better, the 500 in §7), not 554.
 
 ---
 
+## 11. Verification appendix (2026-08-23, post-commit-`17f4505` PI requests)
+
+### 11.1 T32(d) fast_1 footnote — was wrong, now corrected
+
+`paper/TABLES_32TASK_PRIMARY.md` §(d) (and the identical passage in
+`paper/RESULTS_REPORT_20260820.md`, both sourced from `results/eval/
+timing_20260820.json` via `scripts/analyze.py`'s `speedup_table()`)
+carried a footnote claiming `triton|gpt-oss-120b|0shot` was the *only* one
+of the 8 cells exceeding fast_1 50% — contradicted by the same table's own
+`triton|gpt-oss-120b|docinject` (53.6%) and `triton|Qwen3-Coder-30B|0shot`
+(92.9%) rows. **Denominator check (per `scripts/analyze.py`'s `agg()`
+inside `speedup_table()`): fast_1's denominator is per-SAMPLE, not
+per-task** — records are grouped by `(language, model, condition)` and
+`fast_1` counts records with `speedup > 1` within that group; one record =
+one correct-and-timed generated kernel sample, not one distinct task. Both
+files corrected (this session): 3 of 8 cells exceed 50% (all triton:
+53.1%/49, 53.6%/28, 92.9%/14), 1 more ties exactly at 50.0% (6/12), the
+other 4 (non-triton) are all well under. See the inline corrections in
+both files for the full replacement text.
+
+### 11.2 Two cited truncation numbers — both verified correct
+
+**"PTX 외 언어의 턴1 truncation ≤1.1%"** — **TRUE**, and conservative (actual
+max is lower). Recomputed directly from `results/eval/multiturn_state.json`
+(every chain's `history[0]`, i.e. turn 1, `gen_status` field — independent
+of and cross-checked against `turn_10_report.txt`'s own denominator-caveat
+section, which agrees exactly):
+
+| language | n (both models, 0shot+docinject) | truncated+format_failure | % |
+|---|---:|---:|---:|
+| cuda | 490 | 4 | 0.82% |
+| tilelang | 490 | 1 | 0.20% |
+| triton | 490 | 0 | 0.00% |
+| ptx (for contrast, not part of the claim) | 490 | 74 | 15.10% |
+
+Max among non-PTX languages = **0.82%** (cuda) — comfortably under the
+1.1% ceiling cited. (1.1% itself is a real number in this dataset, just
+not a truncation rate: `paper/RESULTS_REPORT_20260820.md` line 84 has
+tilelang|gpt-oss-120b at "2/185 (1.1%)" for **compiled**, a different
+metric — do not confuse the two if tracing this claim back further.)
+
+**"A100 Qwen PTX truncation 28.6%"** — **TRUE**. Source:
+`results/eval/eval_a100_full.json` (pulled from `origin/results-a100`,
+commit `bcd6d4f` — hyunjun1234's A100/Ampere sm_80 probe, 1,110 records,
+0-shot only, cuda/ptx/triton, no tilelang, verified complete via
+`scripts/verify_eval_completeness.py`). Filtering to `language=="ptx"` and
+model containing `"Qwen"`:
+
+```
+n = 185 (37-task raw basis, the A100 probe's native denominator)
+gen_status == "truncated": 53
+53 / 185 = 28.6486...% -> 28.6%
+```
+
+Matches the cited figure exactly on the probe's own **37-task (raw)**
+basis. Note for anyone re-deriving this on our paper's 32-task primary
+filter instead: `clean_32_tasks()` reduces the denominator to 160 and the
+truncated count to 46, giving **28.75% (≈28.7–28.8%)** — a close but
+*different* number from 28.6%. The cited 28.6% is the A100 probe's raw
+(37-task) figure, not the 32-task-primary-filtered one; state the basis
+explicitly wherever this number is cited in the paper.
+
+---
+
 ## Summary of citable numbers for the paper
 
 - **Primary correctness metric:** ever-correct@turn, `paper/figures_data/fig1_ever_correct.csv` (§1, verified §10).

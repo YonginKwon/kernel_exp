@@ -81,9 +81,18 @@ PyTorch eager fp16 베이스라인 재측정) 중 결함 5과제를 과제 단�
 | triton | Qwen3-Coder-30B | 0shot | 14 | 13 (92.9%) | 1.12x |
 | triton | Qwen3-Coder-30B | docinject | 12 | 6 (50.0%) | 0.849x |
 
-8셀 중 `triton|gpt-oss-120b|0shot`이 정제 후 유일하게 fast_1 50%를
-넘는다(53.1%). 226/228 측정 완료, 2건은 재현 가능한 세그폴트로 측정
-불가(§7-1) — speedup 집계에서 자연 제외됨.
+**정정 (2026-08-23, 표 자체와 모순되는 각주 발견)**: "8셀 중 `triton|
+gpt-oss-120b|0shot`이 유일하게 50%를 넘는다"는 틀렸다 — 위 표에서
+`triton|gpt-oss-120b|docinject`도 53.6%(15/28), `triton|Qwen3-Coder-30B|0shot`도
+92.9%(13/14)로 50%를 넘고, `triton|Qwen3-Coder-30B|docinject`은 정확히
+50.0%(6/12)로 동률이다. 정확한 서술: **8셀 중 3셀이 fast_1 50%를 넘고(모두
+triton), 1셀은 동률, non-triton 4셀은 전부 미만.** fast_1의 분모는 과제 단위가
+아니라 **정답 판정 + 타이밍 측정 둘 다 성공한 샘플 단위**다(`scripts/analyze.py`
+`speedup_table()`의 `agg()`: (language, model, condition)별로 묶은 레코드 중
+`speedup > 1`인 레코드 수 — 레코드 1개 = 샘플 1개, 과제가 아님). 226/228
+측정 완료, 2건은 재현 가능한 세그폴트로 측정 불가(§7-1) — speedup 집계에서
+자연 제외됨. 상세 근거는 `paper/RESULTS_REPORT_20260820.md`의 동일 정정
+참고.
 
 ## 재현 방법
 
