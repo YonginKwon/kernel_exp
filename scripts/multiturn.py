@@ -76,6 +76,50 @@ KNOWN_TIMING_UNMEASURABLE = {
         "reproducible segfault in torch.cuda.synchronize() during timing (paper/"
         "RESULTS_REPORT_20260820.md #7-1): 5 attempts, timeout raised 180->400s, "
         "identical crash location every time -- not flaky, confirmed unmeasurable.",
+    # PI decision 2026-08-23 (turn-10 wrap-up, via Claude Code monitoring
+    # session): these 14 correctness=True chains never once produced a
+    # last_timing across the entire run -- generate() skips untimed chains
+    # every round, so they were frozen at whatever turn they last generated
+    # at (turn 2-9, see below) while the catch-up-timing pass in cmd_evaluate
+    # retried all of them every single round with a monotonically-worsening
+    # recovery rate (4/19 -> 3/16 -> 1/14 -> 2/13 -> 0/13 -> 0/13 across
+    # 2026-08-23 09:37-11:38 KST) and NONE of these specific 14 ever recovered
+    # in any round. Unlike the two entries above, no single reproducible crash
+    # signature was captured per-chain here (would require pulling each out
+    # for isolated manual reproduction, which was judged not worth delaying
+    # the run for) -- termination is on persistent-zero-recovery empirical
+    # grounds only. Without this, run_all_turns.sh would keep re-serving both
+    # models every ~15-25 min for these stragglers alone until the 2026-08-25
+    # 06:00 KST cutoff. Excluded from speedup aggregation (last_timing stays
+    # None); correctness verdict (True) is untouched.
+    "tilelang|0shot|36_RMSNorm_|openai/gpt-oss-120b|4":
+        "never recovered timing in any catch-up round; frozen at turn 3. See block comment above.",
+    "triton|0shot|35_GroupNorm_|openai/gpt-oss-120b|2":
+        "never recovered timing in any catch-up round; frozen at turn 5. See block comment above.",
+    "triton|0shot|41_Max_Pooling_1D|Qwen/Qwen3-Coder-30B-A3B-Instruct|1":
+        "never recovered timing in any catch-up round; frozen at turn 9. See block comment above.",
+    "triton|0shot|41_Max_Pooling_1D|Qwen/Qwen3-Coder-30B-A3B-Instruct|2":
+        "never recovered timing in any catch-up round; frozen at turn 6. See block comment above.",
+    "triton|0shot|57_conv_transposed_2D__square_input__square_kernel|openai/gpt-oss-120b|1":
+        "never recovered timing in any catch-up round; frozen at turn 6. See block comment above.",
+    "cuda|docinject|57_conv_transposed_2D__square_input__square_kernel|openai/gpt-oss-120b|2":
+        "never recovered timing in any catch-up round; frozen at turn 7. See block comment above.",
+    "cuda|docinject|57_conv_transposed_2D__square_input__square_kernel|openai/gpt-oss-120b|3":
+        "never recovered timing in any catch-up round; frozen at turn 9. See block comment above.",
+    "tilelang|docinject|35_GroupNorm_|openai/gpt-oss-120b|0":
+        "never recovered timing in any catch-up round; frozen at turn 2. See block comment above.",
+    "tilelang|docinject|35_GroupNorm_|openai/gpt-oss-120b|3":
+        "never recovered timing in any catch-up round; frozen at turn 3. See block comment above.",
+    "tilelang|docinject|40_LayerNorm|openai/gpt-oss-120b|0":
+        "never recovered timing in any catch-up round; frozen at turn 3. See block comment above.",
+    "tilelang|docinject|42_Max_Pooling_2D|openai/gpt-oss-120b|3":
+        "never recovered timing in any catch-up round; frozen at turn 8. See block comment above.",
+    "tilelang|docinject|47_Sum_reduction_over_a_dimension|openai/gpt-oss-120b|3":
+        "never recovered timing in any catch-up round; frozen at turn 6. See block comment above.",
+    "triton|docinject|42_Max_Pooling_2D|openai/gpt-oss-120b|1":
+        "never recovered timing in any catch-up round; frozen at turn 8. See block comment above.",
+    "triton|docinject|42_Max_Pooling_2D|openai/gpt-oss-120b|2":
+        "never recovered timing in any catch-up round; frozen at turn 7. See block comment above.",
 }
 
 
