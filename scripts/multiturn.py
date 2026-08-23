@@ -98,8 +98,20 @@ KNOWN_TIMING_UNMEASURABLE = {
         "never recovered timing in any catch-up round; frozen at turn 5. See block comment above.",
     "triton|0shot|41_Max_Pooling_1D|Qwen/Qwen3-Coder-30B-A3B-Instruct|1":
         "never recovered timing in any catch-up round; frozen at turn 9. See block comment above.",
+    # CORRECTION (2026-08-23, post-final_retiming.py cross-check, paper/FINAL_REPORT.md
+    # #3): this chain's *latest-turn* catch-up attempts never recovered (matching the
+    # block comment above), but its earlier turn's best_code/best_speedup HAD already
+    # been banked from a prior successful timing -- final_retiming.py retimed that
+    # banked best_code successfully (speedup 0.0197). So "never recovered" was accurate
+    # for the turn this chain was stuck on, but imprecise as a claim about the chain's
+    # entire history: no data was lost by terminating it (best_code was already the
+    # historical best and is unaffected by termination), but call it "re-verify latest
+    # turn only, historical best already banked" rather than "never measurable ever".
+    # Same correction applies to the 3 entries below marked the same way.
     "triton|0shot|41_Max_Pooling_1D|Qwen/Qwen3-Coder-30B-A3B-Instruct|2":
-        "never recovered timing in any catch-up round; frozen at turn 6. See block comment above.",
+        "latest-turn catch-up never recovered (frozen at turn 6), but an earlier turn's "
+        "best_code was already banked and retimed successfully in final_retiming.py "
+        "(speedup 0.0197) -- no data lost. See 2026-08-23 CORRECTION comment above.",
     "triton|0shot|57_conv_transposed_2D__square_input__square_kernel|openai/gpt-oss-120b|1":
         "never recovered timing in any catch-up round; frozen at turn 6. See block comment above.",
     "cuda|docinject|57_conv_transposed_2D__square_input__square_kernel|openai/gpt-oss-120b|2":
@@ -115,11 +127,17 @@ KNOWN_TIMING_UNMEASURABLE = {
     "tilelang|docinject|42_Max_Pooling_2D|openai/gpt-oss-120b|3":
         "never recovered timing in any catch-up round; frozen at turn 8. See block comment above.",
     "tilelang|docinject|47_Sum_reduction_over_a_dimension|openai/gpt-oss-120b|3":
-        "never recovered timing in any catch-up round; frozen at turn 6. See block comment above.",
+        "latest-turn catch-up never recovered (frozen at turn 6), but an earlier turn's "
+        "best_code was already banked and retimed successfully in final_retiming.py "
+        "(speedup 0.1172) -- no data lost. See 2026-08-23 CORRECTION comment above.",
     "triton|docinject|42_Max_Pooling_2D|openai/gpt-oss-120b|1":
-        "never recovered timing in any catch-up round; frozen at turn 8. See block comment above.",
+        "latest-turn catch-up never recovered (frozen at turn 8), but an earlier turn's "
+        "best_code was already banked and retimed successfully in final_retiming.py "
+        "(speedup 2.0943) -- no data lost. See 2026-08-23 CORRECTION comment above.",
     "triton|docinject|42_Max_Pooling_2D|openai/gpt-oss-120b|2":
-        "never recovered timing in any catch-up round; frozen at turn 7. See block comment above.",
+        "latest-turn catch-up never recovered (frozen at turn 7), but an earlier turn's "
+        "best_code was already banked and retimed successfully in final_retiming.py "
+        "(speedup 2.3716) -- no data lost. See 2026-08-23 CORRECTION comment above.",
 }
 
 
