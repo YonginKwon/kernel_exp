@@ -1,0 +1,292 @@
+{
+  "chains": {
+    "triton|0shot|82_conv_depthwise_2D_square_input_square_kernel|Qwen/Qwen3-Coder-30B-A3B-Instruct|0": {
+      "chain_id": "triton|0shot|82_conv_depthwise_2D_square_input_square_kernel|Qwen/Qwen3-Coder-30B-A3B-Instruct|0",
+      "language": "triton",
+      "condition": "0shot",
+      "task": "82_conv_depthwise_2D_square_input_square_kernel",
+      "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "sample_index": 0,
+      "original_prompt": "You are given a PyTorch reference implementation of a neural network operator.\nWrite a functionally equivalent GPU kernel in Triton.\n\nRequirements:\n- All tensor inputs and outputs are float16 (fp16). Accumulation precision is\n  your choice unless the reference dictates otherwise.\n- Target GPU: NVIDIA RTX PRO 6000 Blackwell (compute capability 12.0).\n- Your kernel must be a drop-in replacement: same input shapes, same output\n  shapes and dtype as the reference.\n- Output ONLY the complete Triton solution inside a single code block.\n  No explanation outside the code block.\n\nWrite a Triton kernel (triton.jit) with a Python wrapper. Provide the full\nPython file defining ModelNew that calls your Triton kernel.\n\nReference implementation:\n```python\nimport torch\nimport torch.nn as nn\n\nclass Model(nn.Module):\n    \"\"\"\n    Performs a depthwise 2D convolution operation with square input and square kernel.\n\n    Args:\n        in_channels (int): Number of channels in the input tensor.\n        kernel_size (int): Size of the convolution kernel.\n        stride (int, optional): Stride of the convolution. Defaults to 1.\n        padding (int, optional): Padding applied to the input. Defaults to 0.\n        bias (bool, optional): If `True`, adds a learnable bias to the output. Defaults to `False`.\n    \"\"\"\n    def __init__(self, in_channels: int, kernel_size: int, stride: int = 1, padding: int = 0, bias: bool = False):\n        super(Model, self).__init__()\n        self.conv2d = nn.Conv2d(in_channels, in_channels, kernel_size, stride=stride, padding=padding, groups=in_channels, bias=bias)\n        \n    def forward(self, x: torch.Tensor) -> torch.Tensor:\n        \"\"\"\n        Performs the depthwise 2D convolution.\n\n        Args:\n            x (torch.Tensor): Input tensor of shape (batch_size, in_channels, height, width).\n\n        Returns:\n            torch.Tensor: Output tensor of shape (batch_size, in_channels, height_out, width_out).\n        \"\"\"\n        return self.conv2d(x)\n\n# Test code\nbatch_size = 16\nin_channels = 64\nkernel_size = 3\nwidth = 512\nheight = 512\nstride = 1\npadding = 0\n\ndef get_inputs():\n    x = torch.rand(batch_size, in_channels, height, width)\n    return [x]\n\ndef get_init_inputs():\n    return [in_channels, kernel_size, stride, padding]\n```\n",
+      "turn": 1,
+      "phase": "repair",
+      "code": "import torch\nimport triton\nimport triton.language as tl\n\n@triton.jit\ndef depthwise_conv2d_kernel(\n    input_ptr, \n    output_ptr, \n    kernel_ptr,\n    batch_size, \n    in_channels, \n    height, \n    width, \n    kernel_size, \n    stride, \n    padding,\n    BLOCK_SIZE_H: tl.constexpr,\n    BLOCK_SIZE_W: tl.constexpr,\n    BLOCK_SIZE_C: tl.constexpr,\n):\n    # Get block indices\n    batch_idx = tl.program_id(0)\n    channel_idx = tl.program_id(1)\n    h_idx = tl.program_id(2)\n    w_idx = tl.program_id(3)\n    \n    # Calculate output dimensions\n    out_h = (height + 2 * padding - kernel_size) // stride + 1\n    out_w = (width + 2 * padding - kernel_size) // stride + 1\n    \n    # Shared memory for input tile and kernel\n    input_tile = tl.shared_block_alloc((BLOCK_SIZE_H + 2 * padding, BLOCK_SIZE_W + 2 * padding), tl.float16)\n    kernel_tile = tl.shared_block_alloc((kernel_size, kernel_size), tl.float16)\n    \n    # Initialize accumulator\n    acc = tl.zeros((1,), dtype=tl.float32)\n    \n    # Load kernel into shared memory\n    for ky in range(kernel_size):\n        for kx in range(kernel_size):\n            if ky < kernel_size and kx < kernel_size:\n                kernel_tile[ky, kx] = kernel_ptr[channel_idx, ky, kx]\n    \n    # Calculate starting positions\n    start_h = h_idx * stride - padding\n    start_w = w_idx * stride - padding\n    \n    # Load input tile with padding\n    for ih in range(BLOCK_SIZE_H + 2 * padding):\n        for iw in range(BLOCK_SIZE_W + 2 * padding):\n            h_pos = start_h + ih\n            w_pos = start_w + iw\n            \n            if h_pos >= 0 and h_pos < height and w_pos >= 0 and w_pos < width:\n                input_tile[ih, iw] = input_ptr[batch_idx, channel_idx, h_pos, w_pos]\n            else:\n                input_tile[ih, iw] = 0.0\n    \n    # Perform convolution\n    for ky in range(kernel_size):\n        for kx in range(kernel_size):\n            if ky < kernel_size and kx < kernel_size:\n                acc += tl.sum(input_tile[ky:ky+BLOCK_SIZE_H, kx:kx+BLOCK_SIZE_W] * kernel_tile[ky, kx])\n    \n    # Write output\n    if h_idx < out_h and w_idx < out_w:\n        output_ptr[batch_idx, channel_idx, h_idx, w_idx] = acc.to(tl.float16)\n\nclass ModelNew(torch.nn.Module):\n    def __init__(self, in_channels: int, kernel_size: int, stride: int = 1, padding: int = 0, bias: bool = False):\n        super(ModelNew, self).__init__()\n        self.in_channels = in_channels\n        self.kernel_size = kernel_size\n        self.stride = stride\n        self.padding = padding\n        self.bias = bias\n        \n        # Initialize kernel weights\n        self.weight = torch.randn(in_channels, kernel_size, kernel_size, dtype=torch.float16)\n        if bias:\n            self.bias = torch.randn(in_channels, dtype=torch.float16)\n        else:\n            self.register_parameter('bias', None)\n            \n    def forward(self, x: torch.Tensor) -> torch.Tensor:\n        batch_size, channels, height, width = x.shape\n        \n        # Ensure inputs are on GPU and have correct dtype\n        x = x.to(torch.float16)\n        weight = self.weight.to(torch.float16)\n        \n        # Create output tensor\n        out_height = (height + 2 * self.padding - self.kernel_size) // self.stride + 1\n        out_width = (width + 2 * self.padding - self.kernel_size) // self.stride + 1\n        output = torch.empty(batch_size, channels, out_height, out_width, dtype=torch.float16, device=x.device)\n        \n        # Define grid dimensions\n        grid = (\n            batch_size,\n            channels,\n            out_height,\n            out_width\n        )\n        \n        # Launch kernel\n        BLOCK_SIZE_H = 16\n        BLOCK_SIZE_W = 16\n        BLOCK_SIZE_C = 8\n        \n        depthwise_conv2d_kernel[grid](\n            x, \n            output, \n            weight,\n            batch_size, \n            channels, \n            height, \n            width, \n            self.kernel_size, \n            self.stride, \n            self.padding,\n            BLOCK_SIZE_H=BLOCK_SIZE_H,\n            BLOCK_SIZE_W=BLOCK_SIZE_W,\n            BLOCK_SIZE_C=BLOCK_SIZE_C\n        )\n        \n        # Add bias if present\n        if self.bias is not None:\n            bias = self.bias.to(torch.float16).view(1, -1, 1, 1)\n            output = output + bias\n            \n        return output\n\n# Test code\nbatch_size = 16\nin_channels = 64\nkernel_size = 3\nwidth = 512\nheight = 512\nstride = 1\npadding = 0\n\ndef get_inputs():\n    x = torch.rand(batch_size, in_channels, height, width, dtype=torch.float16)\n    return [x]\n\ndef get_init_inputs():\n    return [in_channels, kernel_size, stride, padding]\n",
+      "gen_status": "generated",
+      "compiled": false,
+      "correctness": false,
+      "metadata": {},
+      "last_timing": null,
+      "best_speedup": null,
+      "best_code": null,
+      "best_turn": null,
+      "no_improve_streak": 0,
+      "terminated": false,
+      "termination_reason": null,
+      "history": [
+        {
+          "turn": 1,
+          "compiled": false,
+          "correctness": false,
+          "gen_status": "generated"
+        }
+      ]
+    },
+    "triton|0shot|82_conv_depthwise_2D_square_input_square_kernel|Qwen/Qwen3-Coder-30B-A3B-Instruct|1": {
+      "chain_id": "triton|0shot|82_conv_depthwise_2D_square_input_square_kernel|Qwen/Qwen3-Coder-30B-A3B-Instruct|1",
+      "language": "triton",
+      "condition": "0shot",
+      "task": "82_conv_depthwise_2D_square_input_square_kernel",
+      "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "sample_index": 1,
+      "original_prompt": "You are given a PyTorch reference implementation of a neural network operator.\nWrite a functionally equivalent GPU kernel in Triton.\n\nRequirements:\n- All tensor inputs and outputs are float16 (fp16). Accumulation precision is\n  your choice unless the reference dictates otherwise.\n- Target GPU: NVIDIA RTX PRO 6000 Blackwell (compute capability 12.0).\n- Your kernel must be a drop-in replacement: same input shapes, same output\n  shapes and dtype as the reference.\n- Output ONLY the complete Triton solution inside a single code block.\n  No explanation outside the code block.\n\nWrite a Triton kernel (triton.jit) with a Python wrapper. Provide the full\nPython file defining ModelNew that calls your Triton kernel.\n\nReference implementation:\n```python\nimport torch\nimport torch.nn as nn\n\nclass Model(nn.Module):\n    \"\"\"\n    Performs a depthwise 2D convolution operation with square input and square kernel.\n\n    Args:\n        in_channels (int): Number of channels in the input tensor.\n        kernel_size (int): Size of the convolution kernel.\n        stride (int, optional): Stride of the convolution. Defaults to 1.\n        padding (int, optional): Padding applied to the input. Defaults to 0.\n        bias (bool, optional): If `True`, adds a learnable bias to the output. Defaults to `False`.\n    \"\"\"\n    def __init__(self, in_channels: int, kernel_size: int, stride: int = 1, padding: int = 0, bias: bool = False):\n        super(Model, self).__init__()\n        self.conv2d = nn.Conv2d(in_channels, in_channels, kernel_size, stride=stride, padding=padding, groups=in_channels, bias=bias)\n        \n    def forward(self, x: torch.Tensor) -> torch.Tensor:\n        \"\"\"\n        Performs the depthwise 2D convolution.\n\n        Args:\n            x (torch.Tensor): Input tensor of shape (batch_size, in_channels, height, width).\n\n        Returns:\n            torch.Tensor: Output tensor of shape (batch_size, in_channels, height_out, width_out).\n        \"\"\"\n        return self.conv2d(x)\n\n# Test code\nbatch_size = 16\nin_channels = 64\nkernel_size = 3\nwidth = 512\nheight = 512\nstride = 1\npadding = 0\n\ndef get_inputs():\n    x = torch.rand(batch_size, in_channels, height, width)\n    return [x]\n\ndef get_init_inputs():\n    return [in_channels, kernel_size, stride, padding]\n```\n",
+      "turn": 1,
+      "phase": "repair",
+      "code": "import torch\nimport triton\nimport triton.language as tl\n\n@triton.jit\ndef depthwise_conv2d_kernel(\n    input_ptr, output_ptr, weight_ptr, bias_ptr,\n    batch_size, in_channels, height, width, kernel_size,\n    stride, padding,\n    BLOCK_SIZE_H: tl.constexpr,\n    BLOCK_SIZE_W: tl.constexpr,\n    BLOCK_SIZE_C: tl.constexpr,\n    ACCUMULATION_DTYPE: tl.constexpr\n):\n    # Get thread indices\n    batch_idx = tl.program_id(0)\n    out_h_idx = tl.program_id(1)\n    out_w_idx = tl.program_id(2)\n    \n    # Calculate input/output dimensions\n    in_h = height\n    in_w = width\n    out_h = (in_h + 2 * padding - kernel_size) // stride + 1\n    out_w = (in_w + 2 * padding - kernel_size) // stride + 1\n    \n    # Shared memory for input tile and kernel\n    input_tile = tl.shared_memory(dtype=tl.float16, shape=(BLOCK_SIZE_H + 2 * padding, BLOCK_SIZE_W + 2 * padding))\n    kernel_tile = tl.shared_memory(dtype=tl.float16, shape=(kernel_size, kernel_size))\n    \n    # Load kernel once per block\n    if tl.thread_id() == 0:\n        for i in range(kernel_size):\n            for j in range(kernel_size):\n                if i < kernel_size and j < kernel_size:\n                    kernel_tile[i, j] = tl.load(weight_ptr + i * kernel_size + j)\n    \n    # Synchronize threads\n    tl.sync()\n    \n    # Process each channel\n    for c in range(tl.cdiv(in_channels, BLOCK_SIZE_C)):\n        channel_offset = c * BLOCK_SIZE_C\n        \n        # Load input tile with padding\n        for i in range(BLOCK_SIZE_H + 2 * padding):\n            for j in range(BLOCK_SIZE_W + 2 * padding):\n                h_in = out_h_idx * stride + i - padding\n                w_in = out_w_idx * stride + j - padding\n                \n                if 0 <= h_in < in_h and 0 <= w_in < in_w:\n                    input_val = tl.load(input_ptr + batch_idx * in_channels * in_h * in_w + \n                                       (channel_offset + tl.thread_id() % BLOCK_SIZE_C) * in_h * in_w + \n                                       h_in * in_w + w_in)\n                else:\n                    input_val = tl.zeros((), dtype=tl.float16)\n                \n                input_tile[i, j] = input_val\n        \n        # Synchronize threads\n        tl.sync()\n        \n        # Perform convolution for this channel\n        for i in range(BLOCK_SIZE_H):\n            for j in range(BLOCK_SIZE_W):\n                if i < out_h and j < out_w:\n                    # Convolution computation\n                    acc = tl.zeros((), dtype=ACCUMULATION_DTYPE)\n                    \n                    for k1 in range(kernel_size):\n                        for k2 in range(kernel_size):\n                            h_in = i * stride + k1\n                            w_in = j * stride + k2\n                            \n                            input_val = input_tile[h_in, w_in]\n                            kernel_val = kernel_tile[k1, k2]\n                            \n                            acc += input_val * kernel_val\n                    \n                    # Add bias if needed\n                    if bias_ptr is not None:\n                        bias_val = tl.load(bias_ptr + channel_offset + tl.thread_id() % BLOCK_SIZE_C)\n                        acc += bias_val\n                    \n                    # Store result\n                    output_ptr += batch_idx * in_channels * out_h * out_w + \\\n                                 (channel_offset + tl.thread_id() % BLOCK_SIZE_C) * out_h * out_w + \\\n                                 i * out_w + j\n                    \n                    tl.store(output_ptr, acc.to(tl.float16))\n\nclass ModelNew(torch.nn.Module):\n    def __init__(self, in_channels: int, kernel_size: int, stride: int = 1, padding: int = 0, bias: bool = False):\n        super(ModelNew, self).__init__()\n        self.in_channels = in_channels\n        self.kernel_size = kernel_size\n        self.stride = stride\n        self.padding = padding\n        self.bias = bias\n        \n        # Initialize weights and biases\n        self.weight = torch.randn(in_channels, 1, kernel_size, kernel_size, dtype=torch.float16)\n        if bias:\n            self.bias = torch.randn(in_channels, dtype=torch.float16)\n        else:\n            self.register_parameter('bias', None)\n    \n    def forward(self, x: torch.Tensor) -> torch.Tensor:\n        batch_size, _, height, width = x.shape\n        \n        # Allocate output tensor\n        out_h = (height + 2 * padding - self.kernel_size) // self.stride + 1\n        out_w = (width + 2 * padding - self.kernel_size) // self.stride + 1\n        output = torch.empty(batch_size, self.in_channels, out_h, out_w, dtype=torch.float16, device=x.device)\n        \n        # Prepare grid configuration\n        grid = (\n            batch_size,\n            triton.cdiv(out_h, 16),\n            triton.cdiv(out_w, 16)\n        )\n        \n        # Launch kernel\n        depthwise_conv2d_kernel[grid](\n            x, output, self.weight, self.bias,\n            batch_size, self.in_channels, height, width, self.kernel_size,\n            self.stride, self.padding,\n            BLOCK_SIZE_H=16,\n            BLOCK_SIZE_W=16,\n            BLOCK_SIZE_C=32,\n            ACCUMULATION_DTYPE=tl.float32\n        )\n        \n        return output\n\n# Test code\nbatch_size = 16\nin_channels = 64\nkernel_size = 3\nwidth = 512\nheight = 512\nstride = 1\npadding = 0\n\ndef get_inputs():\n    x = torch.rand(batch_size, in_channels, height, width, dtype=torch.float16)\n    return [x]\n\ndef get_init_inputs():\n    return [in_channels, kernel_size, stride, padding]\n",
+      "gen_status": "generated",
+      "compiled": false,
+      "correctness": false,
+      "metadata": {},
+      "last_timing": null,
+      "best_speedup": null,
+      "best_code": null,
+      "best_turn": null,
+      "no_improve_streak": 0,
+      "terminated": false,
+      "termination_reason": null,
+      "history": [
+        {
+          "turn": 1,
+          "compiled": false,
+          "correctness": false,
+          "gen_status": "generated"
+        }
+      ]
+    },
+    "triton|0shot|82_conv_depthwise_2D_square_input_square_kernel|Qwen/Qwen3-Coder-30B-A3B-Instruct|2": {
+      "chain_id": "triton|0shot|82_conv_depthwise_2D_square_input_square_kernel|Qwen/Qwen3-Coder-30B-A3B-Instruct|2",
+      "language": "triton",
+      "condition": "0shot",
+      "task": "82_conv_depthwise_2D_square_input_square_kernel",
+      "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "sample_index": 2,
+      "original_prompt": "You are given a PyTorch reference implementation of a neural network operator.\nWrite a functionally equivalent GPU kernel in Triton.\n\nRequirements:\n- All tensor inputs and outputs are float16 (fp16). Accumulation precision is\n  your choice unless the reference dictates otherwise.\n- Target GPU: NVIDIA RTX PRO 6000 Blackwell (compute capability 12.0).\n- Your kernel must be a drop-in replacement: same input shapes, same output\n  shapes and dtype as the reference.\n- Output ONLY the complete Triton solution inside a single code block.\n  No explanation outside the code block.\n\nWrite a Triton kernel (triton.jit) with a Python wrapper. Provide the full\nPython file defining ModelNew that calls your Triton kernel.\n\nReference implementation:\n```python\nimport torch\nimport torch.nn as nn\n\nclass Model(nn.Module):\n    \"\"\"\n    Performs a depthwise 2D convolution operation with square input and square kernel.\n\n    Args:\n        in_channels (int): Number of channels in the input tensor.\n        kernel_size (int): Size of the convolution kernel.\n        stride (int, optional): Stride of the convolution. Defaults to 1.\n        padding (int, optional): Padding applied to the input. Defaults to 0.\n        bias (bool, optional): If `True`, adds a learnable bias to the output. Defaults to `False`.\n    \"\"\"\n    def __init__(self, in_channels: int, kernel_size: int, stride: int = 1, padding: int = 0, bias: bool = False):\n        super(Model, self).__init__()\n        self.conv2d = nn.Conv2d(in_channels, in_channels, kernel_size, stride=stride, padding=padding, groups=in_channels, bias=bias)\n        \n    def forward(self, x: torch.Tensor) -> torch.Tensor:\n        \"\"\"\n        Performs the depthwise 2D convolution.\n\n        Args:\n            x (torch.Tensor): Input tensor of shape (batch_size, in_channels, height, width).\n\n        Returns:\n            torch.Tensor: Output tensor of shape (batch_size, in_channels, height_out, width_out).\n        \"\"\"\n        return self.conv2d(x)\n\n# Test code\nbatch_size = 16\nin_channels = 64\nkernel_size = 3\nwidth = 512\nheight = 512\nstride = 1\npadding = 0\n\ndef get_inputs():\n    x = torch.rand(batch_size, in_channels, height, width)\n    return [x]\n\ndef get_init_inputs():\n    return [in_channels, kernel_size, stride, padding]\n```\n",
+      "turn": 1,
+      "phase": "repair",
+      "code": "import torch\nimport triton\nimport triton.language as tl\n\n@triton.jit\ndef depthwise_conv2d_kernel(\n    input_ptr, output_ptr, weight_ptr, bias_ptr,\n    batch_size, in_channels, height, width, kernel_size, stride, padding,\n    BLOCK_SIZE_H: tl.constexpr, BLOCK_SIZE_W: tl.constexpr,\n    BLOCK_SIZE_C: tl.constexpr, ACC_TYPE: tl.constexpr = tl.float32\n):\n    # Get thread indices\n    batch_idx = tl.program_id(0)\n    channel_idx = tl.program_id(1)\n    h_idx = tl.program_id(2)\n    w_idx = tl.program_id(3)\n    \n    # Calculate output dimensions\n    out_height = (height + 2 * padding - kernel_size) // stride + 1\n    out_width = (width + 2 * padding - kernel_size) // stride + 1\n    \n    # Shared memory for input tile and kernel\n    input_tile = tl.shared_pointer(input_ptr, (BLOCK_SIZE_H + 2 * padding, BLOCK_SIZE_W + 2 * padding), \n                                   (1, 1), (1, 1))\n    kernel_tile = tl.shared_pointer(weight_ptr, (kernel_size, kernel_size), (1, 1), (1, 1))\n    \n    # Initialize accumulator\n    acc = tl.zeros((1,), dtype=ACC_TYPE)\n    \n    # Calculate global coordinates\n    out_h_start = h_idx * stride\n    out_w_start = w_idx * stride\n    \n    # Load kernel weights\n    for kh in range(kernel_size):\n        for kw in range(kernel_size):\n            # Load kernel weight\n            k_val = tl.load(weight_ptr + channel_idx * kernel_size * kernel_size + kh * kernel_size + kw)\n            \n            # Load input value with boundary checking\n            ih = out_h_start + kh - padding\n            iw = out_w_start + kw - padding\n            \n            if ih >= 0 and ih < height and iw >= 0 and iw < width:\n                i_val = tl.load(input_ptr + batch_idx * in_channels * height * width + \n                               channel_idx * height * width + ih * width + iw)\n                acc += i_val * k_val\n    \n    # Apply bias if present\n    if bias_ptr is not None:\n        bias_val = tl.load(bias_ptr + channel_idx)\n        acc += bias_val\n    \n    # Store result\n    if h_idx < out_height and w_idx < out_width:\n        output_idx = batch_idx * in_channels * out_height * out_width + \\\n                     channel_idx * out_height * out_width + \\\n                     h_idx * out_width + w_idx\n        tl.store(output_ptr + output_idx, acc.to(tl.float16))\n\ndef depthwise_conv2d_triton(input_tensor, weight, bias=None, stride=1, padding=0):\n    batch_size, in_channels, height, width = input_tensor.shape\n    kernel_size = weight.shape[-1]\n    \n    # Calculate output dimensions\n    out_height = (height + 2 * padding - kernel_size) // stride + 1\n    out_width = (width + 2 * padding - kernel_size) // stride + 1\n    \n    # Create output tensor\n    output = torch.empty(batch_size, in_channels, out_height, out_width, device=input_tensor.device, dtype=torch.float16)\n    \n    # Define grid dimensions\n    grid = (\n        batch_size,\n        in_channels,\n        triton.cdiv(out_height, 16),\n        triton.cdiv(out_width, 16)\n    )\n    \n    # Launch kernel\n    depthwise_conv2d_kernel[grid](\n        input_tensor,\n        output,\n        weight,\n        bias,\n        batch_size,\n        in_channels,\n        height,\n        width,\n        kernel_size,\n        stride,\n        padding,\n        BLOCK_SIZE_H=16,\n        BLOCK_SIZE_W=16,\n        BLOCK_SIZE_C=16\n    )\n    \n    return output\n\nclass ModelNew(torch.nn.Module):\n    def __init__(self, in_channels: int, kernel_size: int, stride: int = 1, padding: int = 0, bias: bool = False):\n        super(ModelNew, self).__init__()\n        self.in_channels = in_channels\n        self.kernel_size = kernel_size\n        self.stride = stride\n        self.padding = padding\n        self.bias = bias\n        \n        # Initialize weight and bias\n        self.weight = torch.nn.Parameter(torch.randn(in_channels, kernel_size, kernel_size, dtype=torch.float16))\n        if bias:\n            self.bias = torch.nn.Parameter(torch.randn(in_channels, dtype=torch.float16))\n        else:\n            self.register_parameter('bias', None)\n    \n    def forward(self, x: torch.Tensor) -> torch.Tensor:\n        return depthwise_conv2d_triton(x, self.weight, self.bias, self.stride, self.padding)\n\n# Test code\nbatch_size = 16\nin_channels = 64\nkernel_size = 3\nwidth = 512\nheight = 512\nstride = 1\npadding = 0\n\ndef get_inputs():\n    x = torch.rand(batch_size, in_channels, height, width, dtype=torch.float16)\n    return [x]\n\ndef get_init_inputs():\n    return [in_channels, kernel_size, stride, padding]\n",
+      "gen_status": "generated",
+      "compiled": false,
+      "correctness": false,
+      "metadata": {},
+      "last_timing": null,
+      "best_speedup": null,
+      "best_code": null,
+      "best_turn": null,
+      "no_improve_streak": 0,
+      "terminated": false,
+      "termination_reason": null,
+      "history": [
+        {
+          "turn": 1,
+          "compiled": false,
+          "correctness": false,
+          "gen_status": "generated"
+        }
+      ]
+    },
+    "triton|0shot|82_conv_depthwise_2D_square_input_square_kernel|Qwen/Qwen3-Coder-30B-A3B-Instruct|3": {
+      "chain_id": "triton|0shot|82_conv_depthwise_2D_square_input_square_kernel|Qwen/Qwen3-Coder-30B-A3B-Instruct|3",
+      "language": "triton",
+      "condition": "0shot",
+      "task": "82_conv_depthwise_2D_square_input_square_kernel",
+      "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "sample_index": 3,
+      "original_prompt": "You are given a PyTorch reference implementation of a neural network operator.\nWrite a functionally equivalent GPU kernel in Triton.\n\nRequirements:\n- All tensor inputs and outputs are float16 (fp16). Accumulation precision is\n  your choice unless the reference dictates otherwise.\n- Target GPU: NVIDIA RTX PRO 6000 Blackwell (compute capability 12.0).\n- Your kernel must be a drop-in replacement: same input shapes, same output\n  shapes and dtype as the reference.\n- Output ONLY the complete Triton solution inside a single code block.\n  No explanation outside the code block.\n\nWrite a Triton kernel (triton.jit) with a Python wrapper. Provide the full\nPython file defining ModelNew that calls your Triton kernel.\n\nReference implementation:\n```python\nimport torch\nimport torch.nn as nn\n\nclass Model(nn.Module):\n    \"\"\"\n    Performs a depthwise 2D convolution operation with square input and square kernel.\n\n    Args:\n        in_channels (int): Number of channels in the input tensor.\n        kernel_size (int): Size of the convolution kernel.\n        stride (int, optional): Stride of the convolution. Defaults to 1.\n        padding (int, optional): Padding applied to the input. Defaults to 0.\n        bias (bool, optional): If `True`, adds a learnable bias to the output. Defaults to `False`.\n    \"\"\"\n    def __init__(self, in_channels: int, kernel_size: int, stride: int = 1, padding: int = 0, bias: bool = False):\n        super(Model, self).__init__()\n        self.conv2d = nn.Conv2d(in_channels, in_channels, kernel_size, stride=stride, padding=padding, groups=in_channels, bias=bias)\n        \n    def forward(self, x: torch.Tensor) -> torch.Tensor:\n        \"\"\"\n        Performs the depthwise 2D convolution.\n\n        Args:\n            x (torch.Tensor): Input tensor of shape (batch_size, in_channels, height, width).\n\n        Returns:\n            torch.Tensor: Output tensor of shape (batch_size, in_channels, height_out, width_out).\n        \"\"\"\n        return self.conv2d(x)\n\n# Test code\nbatch_size = 16\nin_channels = 64\nkernel_size = 3\nwidth = 512\nheight = 512\nstride = 1\npadding = 0\n\ndef get_inputs():\n    x = torch.rand(batch_size, in_channels, height, width)\n    return [x]\n\ndef get_init_inputs():\n    return [in_channels, kernel_size, stride, padding]\n```\n",
+      "turn": 1,
+      "phase": "repair",
+      "code": "import torch\nimport triton\nimport triton.language as tl\n\n@triton.jit\ndef depthwise_conv2d_kernel(\n    input_ptr, \n    output_ptr, \n    weight_ptr,\n    bias_ptr,\n    batch_size,\n    in_channels,\n    height,\n    width,\n    kernel_size,\n    stride,\n    padding,\n    output_height,\n    output_width,\n    BLOCK_SIZE_H=16,\n    BLOCK_SIZE_W=16,\n    BLOCK_SIZE_C=16\n):\n    # Get thread indices\n    batch_idx = tl.program_id(0)\n    channel_idx = tl.program_id(1)\n    h_block = tl.program_id(2)\n    w_block = tl.program_id(3)\n    \n    # Calculate output dimensions\n    output_h = output_height\n    output_w = output_width\n    \n    # Shared memory for the tile\n    tile_size = BLOCK_SIZE_H * BLOCK_SIZE_W\n    shared_input = tl.shared_memory(dtype=tl.float16, size=tile_size)\n    \n    # Initialize accumulator\n    acc = tl.zeros((BLOCK_SIZE_H, BLOCK_SIZE_W), dtype=tl.float32)\n    \n    # Each thread block processes one output position\n    if h_block * BLOCK_SIZE_H < output_h and w_block * BLOCK_SIZE_W < output_w:\n        # Load weights (kernel)\n        weight = tl.load(weight_ptr + channel_idx * kernel_size * kernel_size)\n        \n        # Load bias if needed\n        bias = tl.load(bias_ptr + channel_idx) if bias_ptr is not None else 0.0\n        \n        # Process kernel window\n        for kh in range(kernel_size):\n            for kw in range(kernel_size):\n                # Calculate input coordinates\n                ih = h_block * BLOCK_SIZE_H + kh\n                iw = w_block * BLOCK_SIZE_W + kw\n                \n                # Apply padding\n                ih_padded = ih - padding\n                iw_padded = iw - padding\n                \n                # Check bounds\n                if ih_padded >= 0 and ih_padded < height and iw_padded >= 0 and iw_padded < width:\n                    # Calculate input index\n                    input_idx = batch_idx * (in_channels * height * width) + \\\n                               channel_idx * (height * width) + \\\n                               ih_padded * width + iw_padded\n                    \n                    # Load input value\n                    input_val = tl.load(input_ptr + input_idx)\n                    \n                    # Multiply with kernel weight\n                    acc += input_val * weight[kh * kernel_size + kw]\n        \n        # Add bias\n        acc += bias\n        \n        # Store result\n        output_idx = batch_idx * (in_channels * output_h * output_w) + \\\n                    channel_idx * (output_h * output_w) + \\\n                    h_block * BLOCK_SIZE_H * output_w + w_block * BLOCK_SIZE_W\n        \n        # Write back to global memory\n        tl.store(output_ptr + output_idx, acc.to(tl.float16))\n\nclass ModelNew(torch.nn.Module):\n    def __init__(self, in_channels: int, kernel_size: int, stride: int = 1, padding: int = 0, bias: bool = False):\n        super().__init__()\n        self.in_channels = in_channels\n        self.kernel_size = kernel_size\n        self.stride = stride\n        self.padding = padding\n        self.bias = bias\n        \n        # Initialize weights\n        self.weight = torch.randn(in_channels, kernel_size, kernel_size, dtype=torch.float16)\n        if bias:\n            self.bias_param = torch.randn(in_channels, dtype=torch.float16)\n        else:\n            self.register_parameter('bias_param', None)\n    \n    def forward(self, x: torch.Tensor) -> torch.Tensor:\n        batch_size, _, height, width = x.shape\n        \n        # Compute output dimensions\n        output_height = (height + 2 * self.padding - self.kernel_size) // self.stride + 1\n        output_width = (width + 2 * self.padding - self.kernel_size) // self.stride + 1\n        \n        # Create output tensor\n        output = torch.empty(batch_size, self.in_channels, output_height, output_width, dtype=torch.float16, device=x.device)\n        \n        # Launch kernel\n        grid = (\n            batch_size,\n            self.in_channels,\n            triton.cdiv(output_height, 16),\n            triton.cdiv(output_width, 16)\n        )\n        \n        # Kernel launch\n        depthwise_conv2d_kernel[grid](\n            x,\n            output,\n            self.weight,\n            self.bias_param,\n            batch_size,\n            self.in_channels,\n            height,\n            width,\n            self.kernel_size,\n            self.stride,\n            self.padding,\n            output_height,\n            output_width\n        )\n        \n        return output\n\n# Test code\nbatch_size = 16\nin_channels = 64\nkernel_size = 3\nwidth = 512\nheight = 512\nstride = 1\npadding = 0\n\ndef get_inputs():\n    x = torch.rand(batch_size, in_channels, height, width, dtype=torch.float16)\n    return [x]\n\ndef get_init_inputs():\n    return [in_channels, kernel_size, stride, padding]\n",
+      "gen_status": "generated",
+      "compiled": true,
+      "correctness": false,
+      "metadata": {
+        "hardware": "NVIDIA A100 80GB PCIe",
+        "device": "cuda:0",
+        "runtime_error": "module 'triton.language' has no attribute 'shared_memory'",
+        "runtime_error_name": "builtins.AttributeError",
+        "runtime_error_traceback": "Traceback (most recent call last):\n  File \"/home/jun/kernel-lang-2x2/kernel_exp/third_party/KernelBench/src/kernelbench/eval.py\", line 782, in run_and_check_correctness\n    output_new = model_new(*inputs)\n  File \"/home/jun/kernel-lang-2x2/kernel_exp/.venv/lib/python3.10/site-packages/torch/nn/modules/module.py\", line 1736, in _wrapped_call_impl\n    return self._call_impl(*args, **kwargs)\n  File \"/home/jun/kernel-lang-2x2/kernel_exp/.venv/lib/python3.10/site-packages/torch/nn/modules/module.py\", line 1747, in _call_impl\n    return forward_call(*args, **kwargs)\n  File \"/tmp/tmp571my5uu.py\", line 119, in forward\n    depthwise_conv2d_kernel[grid](\n  File \"/home/jun/kernel-lang-2x2/kernel_exp/.venv/lib/python3.10/site-packages/triton/runtime/jit.py\", line 345, in <lambda>\n    return lambda *args, **kwargs: self.run(grid=grid, warmup=False, *args, **kwargs)\n  File \"/home/jun/kernel-lang-2x2/kernel_exp/.venv/lib/python3.10/site-packages/triton/runtime/jit.py\", line 662, in run\n    kernel = self.compile(\n  File \"/home/jun/kernel-lang-2x2/kernel_exp/.venv/lib/python3.10/site-packages/triton/compiler/compiler.py\", line 240, in compile\n    key = f\"{triton_key()}-{src.hash()}-{backend.hash()}-{options.hash()}-{str(sorted(env_vars.items()))}\"\n  File \"/home/jun/kernel-lang-2x2/kernel_exp/.venv/lib/python3.10/site-packages/triton/compiler/compiler.py\", line 109, in hash\n    key = f\"{self.fn.cache_key}-{self.attrs.hash()}-{sorted_sig}-{sorted_constants}\"\n  File \"/home/jun/kernel-lang-2x2/kernel_exp/.venv/lib/python3.10/site-packages/triton/runtime/jit.py\", line 758, in cache_key\n    dependencies_finder.visit(self.parse())\n  File \"/usr/lib/python3.10/ast.py\", line 418, in visit\n    return visitor(node)\n  File \"/usr/lib/python3.10/ast.py\", line 426, in generic_visit\n    self.visit(item)\n  File \"/usr/lib/python3.10/ast.py\", line 418, in visit\n    return visitor(node)\n  File \"/home/jun/kernel-lang-2x2/kernel_exp/.venv/lib/python3.10/site-packages/triton/runtime/jit.py\", line 167, in visit_FunctionDef\n    self.generic_visit(node)\n  File \"/usr/lib/python3.10/ast.py\", line 426, in generic_visit\n    self.visit(item)\n  File \"/usr/lib/python3.10/ast.py\", line 418, in visit\n    return visitor(node)\n  File \"/home/jun/kernel-lang-2x2/kernel_exp/.venv/lib/python3.10/site-packages/triton/runtime/jit.py\", line 221, in visit_Assign\n    self.generic_visit(node)\n  File \"/usr/lib/python3.10/ast.py\", line 428, in generic_visit\n    self.visit(value)\n  File \"/usr/lib/python3.10/ast.py\", line 418, in visit\n    return visitor(node)\n  File \"/home/jun/kernel-lang-2x2/kernel_exp/.venv/lib/python3.10/site-packages/triton/runtime/jit.py\", line 127, in visit_Call\n    func = self.visit(node.func)\n  File \"/usr/lib/python3.10/ast.py\", line 418, in visit\n    return visitor(node)\n  File \"/home/jun/kernel-lang-2x2/kernel_exp/.venv/lib/python3.10/site-packages/triton/runtime/jit.py\", line 117, in visit_Attribute\n    return getattr(lhs, node.attr)\nAttributeError: module 'triton.language' has no attribute 'shared_memory'\n"
+      },
+      "last_timing": null,
+      "best_speedup": null,
+      "best_code": null,
+      "best_turn": null,
+      "no_improve_streak": 0,
+      "terminated": false,
+      "termination_reason": null,
+      "history": [
+        {
+          "turn": 1,
+          "compiled": true,
+          "correctness": false,
+          "gen_status": "generated"
+        }
+      ]
+    },
+    "triton|0shot|82_conv_depthwise_2D_square_input_square_kernel|Qwen/Qwen3-Coder-30B-A3B-Instruct|4": {
+      "chain_id": "triton|0shot|82_conv_depthwise_2D_square_input_square_kernel|Qwen/Qwen3-Coder-30B-A3B-Instruct|4",
+      "language": "triton",
+      "condition": "0shot",
+      "task": "82_conv_depthwise_2D_square_input_square_kernel",
+      "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "sample_index": 4,
+      "original_prompt": "You are given a PyTorch reference implementation of a neural network operator.\nWrite a functionally equivalent GPU kernel in Triton.\n\nRequirements:\n- All tensor inputs and outputs are float16 (fp16). Accumulation precision is\n  your choice unless the reference dictates otherwise.\n- Target GPU: NVIDIA RTX PRO 6000 Blackwell (compute capability 12.0).\n- Your kernel must be a drop-in replacement: same input shapes, same output\n  shapes and dtype as the reference.\n- Output ONLY the complete Triton solution inside a single code block.\n  No explanation outside the code block.\n\nWrite a Triton kernel (triton.jit) with a Python wrapper. Provide the full\nPython file defining ModelNew that calls your Triton kernel.\n\nReference implementation:\n```python\nimport torch\nimport torch.nn as nn\n\nclass Model(nn.Module):\n    \"\"\"\n    Performs a depthwise 2D convolution operation with square input and square kernel.\n\n    Args:\n        in_channels (int): Number of channels in the input tensor.\n        kernel_size (int): Size of the convolution kernel.\n        stride (int, optional): Stride of the convolution. Defaults to 1.\n        padding (int, optional): Padding applied to the input. Defaults to 0.\n        bias (bool, optional): If `True`, adds a learnable bias to the output. Defaults to `False`.\n    \"\"\"\n    def __init__(self, in_channels: int, kernel_size: int, stride: int = 1, padding: int = 0, bias: bool = False):\n        super(Model, self).__init__()\n        self.conv2d = nn.Conv2d(in_channels, in_channels, kernel_size, stride=stride, padding=padding, groups=in_channels, bias=bias)\n        \n    def forward(self, x: torch.Tensor) -> torch.Tensor:\n        \"\"\"\n        Performs the depthwise 2D convolution.\n\n        Args:\n            x (torch.Tensor): Input tensor of shape (batch_size, in_channels, height, width).\n\n        Returns:\n            torch.Tensor: Output tensor of shape (batch_size, in_channels, height_out, width_out).\n        \"\"\"\n        return self.conv2d(x)\n\n# Test code\nbatch_size = 16\nin_channels = 64\nkernel_size = 3\nwidth = 512\nheight = 512\nstride = 1\npadding = 0\n\ndef get_inputs():\n    x = torch.rand(batch_size, in_channels, height, width)\n    return [x]\n\ndef get_init_inputs():\n    return [in_channels, kernel_size, stride, padding]\n```\n",
+      "turn": 1,
+      "phase": "repair",
+      "code": "import torch\nimport triton\nimport triton.language as tl\n\n@triton.jit\ndef depthwise_conv2d_kernel(\n    input_ptr, \n    output_ptr, \n    weight_ptr,\n    bias_ptr,\n    batch_size,\n    in_channels,\n    height,\n    width,\n    kernel_size,\n    stride,\n    padding,\n    output_height,\n    output_width,\n    BLOCK_SIZE_H=16,\n    BLOCK_SIZE_W=16,\n    BLOCK_SIZE_C=16\n):\n    # Get block indices\n    batch_idx = tl.program_id(0)\n    channel_idx = tl.program_id(1)\n    h_block = tl.program_id(2)\n    w_block = tl.program_id(3)\n    \n    # Calculate output coordinates\n    out_h_start = h_block * BLOCK_SIZE_H\n    out_w_start = w_block * BLOCK_SIZE_W\n    \n    # Shared memory for input tile\n    input_tile = tl.shared_tile(input_ptr, [BLOCK_SIZE_H + 2*padding, BLOCK_SIZE_W + 2*padding], [1, 1])\n    \n    # Load kernel weights\n    weight = tl.load(weight_ptr + channel_idx * kernel_size * kernel_size)\n    \n    # Initialize accumulator\n    acc = tl.zeros((BLOCK_SIZE_H, BLOCK_SIZE_W), dtype=tl.float32)\n    \n    # Loop over kernel elements\n    for kh in range(kernel_size):\n        for kw in range(kernel_size):\n            # Calculate input coordinates\n            ih = out_h_start + kh - padding\n            iw = out_w_start + kw - padding\n            \n            # Check bounds\n            if ih >= 0 and ih < height and iw >= 0 and iw < width:\n                # Load input element\n                input_val = tl.load(input_ptr + batch_idx * in_channels * height * width + \n                                  channel_idx * height * width + \n                                  ih * width + iw)\n                # Multiply with kernel weight\n                acc += input_val * weight[kh * kernel_size + kw]\n    \n    # Store result\n    for i in range(BLOCK_SIZE_H):\n        for j in range(BLOCK_SIZE_W):\n            if out_h_start + i < output_height and out_w_start + j < output_width:\n                tl.store(output_ptr + batch_idx * in_channels * output_height * output_width + \n                        channel_idx * output_height * output_width + \n                        (out_h_start + i) * output_width + (out_w_start + j),\n                        acc[i, j])\n\nclass ModelNew(torch.nn.Module):\n    def __init__(self, in_channels: int, kernel_size: int, stride: int = 1, padding: int = 0, bias: bool = False):\n        super(ModelNew, self).__init__()\n        self.in_channels = in_channels\n        self.kernel_size = kernel_size\n        self.stride = stride\n        self.padding = padding\n        self.bias = bias\n        \n        # Initialize weight and bias tensors\n        self.weight = torch.randn(in_channels, kernel_size, kernel_size, dtype=torch.float16)\n        if bias:\n            self.bias = torch.randn(in_channels, dtype=torch.float16)\n        else:\n            self.register_parameter('bias', None)\n            \n    def forward(self, x: torch.Tensor) -> torch.Tensor:\n        # Ensure input is on GPU and in correct dtype\n        if not x.is_cuda or x.dtype != torch.float16:\n            x = x.to(device='cuda', dtype=torch.float16)\n            \n        batch_size, _, height, width = x.shape\n        \n        # Calculate output dimensions\n        output_height = (height + 2 * self.padding - self.kernel_size) // self.stride + 1\n        output_width = (width + 2 * self.padding - self.kernel_size) // self.stride + 1\n        \n        # Create output tensor\n        output = torch.empty(batch_size, self.in_channels, output_height, output_width, \n                           device=x.device, dtype=torch.float16)\n        \n        # Launch kernel\n        grid = (\n            batch_size,\n            self.in_channels,\n            triton.cdiv(output_height, 16),\n            triton.cdiv(output_width, 16)\n        )\n        \n        # Prepare pointers\n        input_ptr = x.data_ptr()\n        output_ptr = output.data_ptr()\n        weight_ptr = self.weight.data_ptr()\n        bias_ptr = self.bias.data_ptr() if self.bias is not None else 0\n        \n        # Launch kernel\n        depthwise_conv2d_kernel[grid](\n            input_ptr,\n            output_ptr,\n            weight_ptr,\n            bias_ptr,\n            batch_size,\n            self.in_channels,\n            height,\n            width,\n            self.kernel_size,\n            self.stride,\n            self.padding,\n            output_height,\n            output_width\n        )\n        \n        return output\n\n# Test code\nbatch_size = 16\nin_channels = 64\nkernel_size = 3\nwidth = 512\nheight = 512\nstride = 1\npadding = 0\n\ndef get_inputs():\n    x = torch.rand(batch_size, in_channels, height, width, dtype=torch.float16, device='cuda')\n    return [x]\n\ndef get_init_inputs():\n    return [in_channels, kernel_size, stride, padding]\n",
+      "gen_status": "generated",
+      "compiled": false,
+      "correctness": false,
+      "metadata": {},
+      "last_timing": null,
+      "best_speedup": null,
+      "best_code": null,
+      "best_turn": null,
+      "no_improve_streak": 0,
+      "terminated": false,
+      "termination_reason": null,
+      "history": [
+        {
+          "turn": 1,
+          "compiled": false,
+          "correctness": false,
+          "gen_status": "generated"
+        }
+      ]
+    },
+    "triton|0shot|82_conv_depthwise_2D_square_input_square_kernel|openai/gpt-oss-120b|900": {
+      "chain_id": "triton|0shot|82_conv_depthwise_2D_square_input_square_kernel|openai/gpt-oss-120b|900",
+      "language": "triton",
+      "condition": "0shot",
+      "task": "82_conv_depthwise_2D_square_input_square_kernel",
+      "model": "openai/gpt-oss-120b",
+      "sample_index": 900,
+      "original_prompt": "You are given a PyTorch reference implementation of a neural network operator.\nWrite a functionally equivalent GPU kernel in Triton.\n\nRequirements:\n- All tensor inputs and outputs are float16 (fp16). Accumulation precision is\n  your choice unless the reference dictates otherwise.\n- Target GPU: NVIDIA A100 (compute capability 8.0).\n- Your kernel must be a drop-in replacement: same input shapes, same output\n  shapes and dtype as the reference.\n- Output ONLY the complete Triton solution inside a single code block.\n  No explanation outside the code block.\n\nWrite a Triton kernel (triton.jit) with a Python wrapper. Provide the full\nPython file defining ModelNew that calls your Triton kernel.\n\nReference implementation:\n```python\nimport torch\nimport torch.nn as nn\n\nclass Model(nn.Module):\n    \"\"\"\n    Performs a depthwise 2D convolution operation with square input and square kernel.\n\n    Args:\n        in_channels (int): Number of channels in the input tensor.\n        kernel_size (int): Size of the convolution kernel.\n        stride (int, optional): Stride of the convolution. Defaults to 1.\n        padding (int, optional): Padding applied to the input. Defaults to 0.\n        bias (bool, optional): If `True`, adds a learnable bias to the output. Defaults to `False`.\n    \"\"\"\n    def __init__(self, in_channels: int, kernel_size: int, stride: int = 1, padding: int = 0, bias: bool = False):\n        super(Model, self).__init__()\n        self.conv2d = nn.Conv2d(in_channels, in_channels, kernel_size, stride=stride, padding=padding, groups=in_channels, bias=bias)\n        \n    def forward(self, x: torch.Tensor) -> torch.Tensor:\n        \"\"\"\n        Performs the depthwise 2D convolution.\n\n        Args:\n            x (torch.Tensor): Input tensor of shape (batch_size, in_channels, height, width).\n\n        Returns:\n            torch.Tensor: Output tensor of shape (batch_size, in_channels, height_out, width_out).\n        \"\"\"\n        return self.conv2d(x)\n\n# Test code\nbatch_size = 16\nin_channels = 64\nkernel_size = 3\nwidth = 512\nheight = 512\nstride = 1\npadding = 0\n\ndef get_inputs():\n    x = torch.rand(batch_size, in_channels, height, width)\n    return [x]\n\ndef get_init_inputs():\n    return [in_channels, kernel_size, stride, padding]\n```\n",
+      "turn": 1,
+      "phase": "optimize",
+      "code": null,
+      "gen_status": "seeded_from_main_experiment",
+      "compiled": true,
+      "correctness": true,
+      "metadata": {
+        "seeded_from_main_experiment": true,
+        "main_experiment_chain_id": "triton|0shot|82_conv_depthwise_2D_square_input_square_kernel|openai/gpt-oss-120b|2",
+        "main_experiment_sample_index": 2,
+        "main_experiment_best_speedup": 0.18651362534052496,
+        "main_experiment_best_turn": 5
+      },
+      "last_timing": {
+        "kernel_ms": 4.996096134185791,
+        "baseline_ms": 0.9328640103340149,
+        "speedup": 0.18671858692848048
+      },
+      "best_speedup": 0.18671858692848048,
+      "best_code": null,
+      "best_turn": 1,
+      "no_improve_streak": 0,
+      "terminated": false,
+      "termination_reason": null,
+      "history": [
+        {
+          "turn": 1,
+          "compiled": true,
+          "correctness": true,
+          "gen_status": "seeded_from_main_experiment"
+        }
+      ]
+    },
+    "triton|0shot|1_Square_matrix_multiplication_|openai/gpt-oss-120b|901": {
+      "chain_id": "triton|0shot|1_Square_matrix_multiplication_|openai/gpt-oss-120b|901",
+      "language": "triton",
+      "condition": "0shot",
+      "task": "1_Square_matrix_multiplication_",
+      "model": "openai/gpt-oss-120b",
+      "sample_index": 901,
+      "original_prompt": "You are given a PyTorch reference implementation of a neural network operator.\nWrite a functionally equivalent GPU kernel in Triton.\n\nRequirements:\n- All tensor inputs and outputs are float16 (fp16). Accumulation precision is\n  your choice unless the reference dictates otherwise.\n- Target GPU: NVIDIA A100 (compute capability 8.0).\n- Your kernel must be a drop-in replacement: same input shapes, same output\n  shapes and dtype as the reference.\n- Output ONLY the complete Triton solution inside a single code block.\n  No explanation outside the code block.\n\nWrite a Triton kernel (triton.jit) with a Python wrapper. Provide the full\nPython file defining ModelNew that calls your Triton kernel.\n\nReference implementation:\n```python\nimport torch\nimport torch.nn as nn\n\nclass Model(nn.Module):\n    \"\"\"\n    Simple model that performs a single square matrix multiplication (C = A * B)\n    \"\"\"\n    def __init__(self):\n        super(Model, self).__init__()\n    \n    def forward(self, A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:\n        \"\"\"\n        Performs the matrix multiplication.\n\n        Args:\n            A (torch.Tensor): Input matrix A of shape (N, N).\n            B (torch.Tensor): Input matrix B of shape (N, N).\n\n        Returns:\n            torch.Tensor: Output matrix C of shape (N, N).\n        \"\"\"\n        return torch.matmul(A, B)\n\nN = 2048 * 2\n\ndef get_inputs():\n    A = torch.rand(N, N)\n    B = torch.rand(N, N)\n    return [A, B]\n\ndef get_init_inputs():\n    return []  # No special initialization inputs needed\n```\n",
+      "turn": 1,
+      "phase": "optimize",
+      "code": null,
+      "gen_status": "seeded_from_main_experiment",
+      "compiled": true,
+      "correctness": true,
+      "metadata": {
+        "seeded_from_main_experiment": true,
+        "main_experiment_chain_id": "triton|0shot|1_Square_matrix_multiplication_|openai/gpt-oss-120b|3",
+        "main_experiment_sample_index": 3,
+        "main_experiment_best_speedup": 2.2703863277448564,
+        "main_experiment_best_turn": 7
+      },
+      "last_timing": {
+        "kernel_ms": 0.23756800591945648,
+        "baseline_ms": 0.547327995300293,
+        "speedup": 2.3038792331567386
+      },
+      "best_speedup": 2.3038792331567386,
+      "best_code": null,
+      "best_turn": 1,
+      "no_improve_streak": 0,
+      "terminated": false,
+      "termination_reason": null,
+      "history": [
+        {
+          "turn": 1,
+          "compiled": true,
+          "correctness": true,
+          "gen_status": "seeded_from_main_experiment"
+        }
+      ]
+    },
+    "triton|0shot|1_Square_matrix_multiplication_|Qwen/Qwen3-Coder-30B-A3B-Instruct|902": {
+      "chain_id": "triton|0shot|1_Square_matrix_multiplication_|Qwen/Qwen3-Coder-30B-A3B-Instruct|902",
+      "language": "triton",
+      "condition": "0shot",
+      "task": "1_Square_matrix_multiplication_",
+      "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "sample_index": 902,
+      "original_prompt": "You are given a PyTorch reference implementation of a neural network operator.\nWrite a functionally equivalent GPU kernel in Triton.\n\nRequirements:\n- All tensor inputs and outputs are float16 (fp16). Accumulation precision is\n  your choice unless the reference dictates otherwise.\n- Target GPU: NVIDIA A100 (compute capability 8.0).\n- Your kernel must be a drop-in replacement: same input shapes, same output\n  shapes and dtype as the reference.\n- Output ONLY the complete Triton solution inside a single code block.\n  No explanation outside the code block.\n\nWrite a Triton kernel (triton.jit) with a Python wrapper. Provide the full\nPython file defining ModelNew that calls your Triton kernel.\n\nReference implementation:\n```python\nimport torch\nimport torch.nn as nn\n\nclass Model(nn.Module):\n    \"\"\"\n    Simple model that performs a single square matrix multiplication (C = A * B)\n    \"\"\"\n    def __init__(self):\n        super(Model, self).__init__()\n    \n    def forward(self, A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:\n        \"\"\"\n        Performs the matrix multiplication.\n\n        Args:\n            A (torch.Tensor): Input matrix A of shape (N, N).\n            B (torch.Tensor): Input matrix B of shape (N, N).\n\n        Returns:\n            torch.Tensor: Output matrix C of shape (N, N).\n        \"\"\"\n        return torch.matmul(A, B)\n\nN = 2048 * 2\n\ndef get_inputs():\n    A = torch.rand(N, N)\n    B = torch.rand(N, N)\n    return [A, B]\n\ndef get_init_inputs():\n    return []  # No special initialization inputs needed\n```\n",
+      "turn": 1,
+      "phase": "optimize",
+      "code": null,
+      "gen_status": "seeded_from_main_experiment",
+      "compiled": true,
+      "correctness": true,
+      "metadata": {
+        "seeded_from_main_experiment": true,
+        "main_experiment_chain_id": "triton|0shot|1_Square_matrix_multiplication_|Qwen/Qwen3-Coder-30B-A3B-Instruct|4",
+        "main_experiment_sample_index": 4,
+        "main_experiment_best_speedup": 0.9955077073115831,
+        "main_experiment_best_turn": 3
+      },
+      "last_timing": {
+        "kernel_ms": 0.5785599946975708,
+        "baseline_ms": 0.5565440058708191,
+        "speedup": 0.9619469216182842
+      },
+      "best_speedup": 0.9619469216182842,
+      "best_code": null,
+      "best_turn": 1,
+      "no_improve_streak": 0,
+      "terminated": false,
+      "termination_reason": null,
+      "history": [
+        {
+          "turn": 1,
+          "compiled": true,
+          "correctness": true,
+          "gen_status": "seeded_from_main_experiment"
+        }
+      ]
+    }
+  },
+  "created": "2026-08-23T10:05:16+0900",
+  "k_max": 100,
+  "experiment": "deep-turn-probe",
+  "arm": "B"
+}
