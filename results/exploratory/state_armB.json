@@ -8,7 +8,7 @@
       "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
       "sample_index": 0,
       "original_prompt": "You are given a PyTorch reference implementation of a neural network operator.\nWrite a functionally equivalent GPU kernel in Triton.\n\nRequirements:\n- All tensor inputs and outputs are float16 (fp16). Accumulation precision is\n  your choice unless the reference dictates otherwise.\n- Target GPU: NVIDIA RTX PRO 6000 Blackwell (compute capability 12.0).\n- Your kernel must be a drop-in replacement: same input shapes, same output\n  shapes and dtype as the reference.\n- Output ONLY the complete Triton solution inside a single code block.\n  No explanation outside the code block.\n\nWrite a Triton kernel (triton.jit) with a Python wrapper. Provide the full\nPython file defining ModelNew that calls your Triton kernel.\n\nReference implementation:\n```python\nimport torch\nimport torch.nn as nn\n\nclass Model(nn.Module):\n    \"\"\"\n    Performs a depthwise 2D convolution operation with square input and square kernel.\n\n    Args:\n        in_channels (int): Number of channels in the input tensor.\n        kernel_size (int): Size of the convolution kernel.\n        stride (int, optional): Stride of the convolution. Defaults to 1.\n        padding (int, optional): Padding applied to the input. Defaults to 0.\n        bias (bool, optional): If `True`, adds a learnable bias to the output. Defaults to `False`.\n    \"\"\"\n    def __init__(self, in_channels: int, kernel_size: int, stride: int = 1, padding: int = 0, bias: bool = False):\n        super(Model, self).__init__()\n        self.conv2d = nn.Conv2d(in_channels, in_channels, kernel_size, stride=stride, padding=padding, groups=in_channels, bias=bias)\n        \n    def forward(self, x: torch.Tensor) -> torch.Tensor:\n        \"\"\"\n        Performs the depthwise 2D convolution.\n\n        Args:\n            x (torch.Tensor): Input tensor of shape (batch_size, in_channels, height, width).\n\n        Returns:\n            torch.Tensor: Output tensor of shape (batch_size, in_channels, height_out, width_out).\n        \"\"\"\n        return self.conv2d(x)\n\n# Test code\nbatch_size = 16\nin_channels = 64\nkernel_size = 3\nwidth = 512\nheight = 512\nstride = 1\npadding = 0\n\ndef get_inputs():\n    x = torch.rand(batch_size, in_channels, height, width)\n    return [x]\n\ndef get_init_inputs():\n    return [in_channels, kernel_size, stride, padding]\n```\n",
-      "turn": 81,
+      "turn": 100,
       "phase": "repair",
       "code": "import torch\nimport triton\nimport triton.language as tl\n\n@triton.jit\ndef depthwise_conv2d_kernel(\n    input_ptr, \n    output_ptr, \n    kernel_ptr,\n    batch_size, \n    in_channels, \n    height, \n    width, \n    kernel_size, \n    stride, \n    padding,\n    BLOCK_SIZE_H: tl.constexpr,\n    BLOCK_SIZE_W: tl.constexpr,\n    BLOCK_SIZE_C: tl.constexpr,\n):\n    # Get block indices\n    batch_idx = tl.program_id(0)\n    channel_idx = tl.program_id(1)\n    h_idx = tl.program_id(2)\n    w_idx = tl.program_id(3)\n    \n    # Calculate output dimensions\n    out_h = (height + 2 * padding - kernel_size) // stride + 1\n    out_w = (width + 2 * padding - kernel_size) // stride + 1\n    \n    # Shared memory for input tile and kernel\n    input_tile = tl.shared_block_alloc((BLOCK_SIZE_H + 2 * padding, BLOCK_SIZE_W + 2 * padding), tl.float16)\n    kernel_tile = tl.shared_block_alloc((kernel_size, kernel_size), tl.float16)\n    \n    # Initialize accumulator\n    acc = tl.zeros((1,), dtype=tl.float32)\n    \n    # Load kernel into shared memory\n    for ky in range(kernel_size):\n        for kx in range(kernel_size):\n            if ky < kernel_size and kx < kernel_size:\n                kernel_tile[ky, kx] = kernel_ptr[channel_idx, ky, kx]\n    \n    # Calculate starting positions\n    start_h = h_idx * stride - padding\n    start_w = w_idx * stride - padding\n    \n    # Load input tile with padding\n    for ih in range(BLOCK_SIZE_H + 2 * padding):\n        for iw in range(BLOCK_SIZE_W + 2 * padding):\n            h_pos = start_h + ih\n            w_pos = start_w + iw\n            \n            if h_pos >= 0 and h_pos < height and w_pos >= 0 and w_pos < width:\n                input_tile[ih, iw] = input_ptr[batch_idx, channel_idx, h_pos, w_pos]\n            else:\n                input_tile[ih, iw] = 0.0\n    \n    # Perform convolution\n    for ky in range(kernel_size):\n        for kx in range(kernel_size):\n            if ky < kernel_size and kx < kernel_size:\n                acc += tl.sum(input_tile[ky:ky+BLOCK_SIZE_H, kx:kx+BLOCK_SIZE_W] * kernel_tile[ky, kx])\n    \n    # Write output\n    if h_idx < out_h and w_idx < out_w:\n        output_ptr[batch_idx, channel_idx, h_idx, w_idx] = acc.to(tl.float16)\n\nclass ModelNew(torch.nn.Module):\n    def __init__(self, in_channels: int, kernel_size: int, stride: int = 1, padding: int = 0, bias: bool = False):\n        super(ModelNew, self).__init__()\n        self.in_channels = in_channels\n        self.kernel_size = kernel_size\n        self.stride = stride\n        self.padding = padding\n        self.bias = bias\n        \n        # Initialize kernel weights\n        self.weight = torch.randn(in_channels, kernel_size, kernel_size, dtype=torch.float16)\n        if bias:\n            self.bias = torch.randn(in_channels, dtype=torch.float16)\n        else:\n            self.register_parameter('bias', None)\n            \n    def forward(self, x: torch.Tensor) -> torch.Tensor:\n        batch_size, channels, height, width = x.shape\n        \n        # Ensure inputs are on GPU and have correct dtype\n        x = x.to(torch.float16)\n        weight = self.weight.to(torch.float16)\n        \n        # Create output tensor\n        out_height = (height + 2 * self.padding - self.kernel_size) // self.stride + 1\n        out_width = (width + 2 * self.padding - self.kernel_size) // self.stride + 1\n        output = torch.empty(batch_size, channels, out_height, out_width, dtype=torch.float16, device=x.device)\n        \n        # Define grid dimensions\n        grid = (\n            batch_size,\n            channels,\n            out_height,\n            out_width\n        )\n        \n        # Launch kernel\n        BLOCK_SIZE_H = 16\n        BLOCK_SIZE_W = 16\n        BLOCK_SIZE_C = 8\n        \n        depthwise_conv2d_kernel[grid](\n            x, \n            output, \n            weight,\n            batch_size, \n            channels, \n            height, \n            width, \n            self.kernel_size, \n            self.stride, \n            self.padding,\n            BLOCK_SIZE_H=BLOCK_SIZE_H,\n            BLOCK_SIZE_W=BLOCK_SIZE_W,\n            BLOCK_SIZE_C=BLOCK_SIZE_C\n        )\n        \n        # Add bias if present\n        if self.bias is not None:\n            bias = self.bias.to(torch.float16).view(1, -1, 1, 1)\n            output = output + bias\n            \n        return output\n\n# Test code\nbatch_size = 16\nin_channels = 64\nkernel_size = 3\nwidth = 512\nheight = 512\nstride = 1\npadding = 0\n\ndef get_inputs():\n    x = torch.rand(batch_size, in_channels, height, width, dtype=torch.float16)\n    return [x]\n\ndef get_init_inputs():\n    return [in_channels, kernel_size, stride, padding]\n",
       "gen_status": "generated",
@@ -20,8 +20,8 @@
       "best_code": null,
       "best_turn": null,
       "no_improve_streak": 0,
-      "terminated": false,
-      "termination_reason": null,
+      "terminated": true,
+      "termination_reason": "k_max_reached",
       "history": [
         {
           "turn": 1,
@@ -584,6 +584,139 @@
         },
         {
           "turn": 81,
+          "compiled": false,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 82,
+          "compiled": false,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 83,
+          "compiled": false,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 84,
+          "compiled": false,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 85,
+          "compiled": false,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 86,
+          "compiled": false,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 87,
+          "compiled": false,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 88,
+          "compiled": false,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 89,
+          "compiled": false,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 90,
+          "compiled": false,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 91,
+          "compiled": false,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 92,
+          "compiled": false,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 93,
+          "compiled": false,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 94,
+          "compiled": false,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 95,
+          "compiled": false,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 96,
+          "compiled": false,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 97,
+          "compiled": false,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 98,
+          "compiled": false,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 99,
+          "compiled": false,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 100,
           "compiled": false,
           "correctness": false,
           "gen_status": "generated",
@@ -599,7 +732,7 @@
       "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
       "sample_index": 1,
       "original_prompt": "You are given a PyTorch reference implementation of a neural network operator.\nWrite a functionally equivalent GPU kernel in Triton.\n\nRequirements:\n- All tensor inputs and outputs are float16 (fp16). Accumulation precision is\n  your choice unless the reference dictates otherwise.\n- Target GPU: NVIDIA RTX PRO 6000 Blackwell (compute capability 12.0).\n- Your kernel must be a drop-in replacement: same input shapes, same output\n  shapes and dtype as the reference.\n- Output ONLY the complete Triton solution inside a single code block.\n  No explanation outside the code block.\n\nWrite a Triton kernel (triton.jit) with a Python wrapper. Provide the full\nPython file defining ModelNew that calls your Triton kernel.\n\nReference implementation:\n```python\nimport torch\nimport torch.nn as nn\n\nclass Model(nn.Module):\n    \"\"\"\n    Performs a depthwise 2D convolution operation with square input and square kernel.\n\n    Args:\n        in_channels (int): Number of channels in the input tensor.\n        kernel_size (int): Size of the convolution kernel.\n        stride (int, optional): Stride of the convolution. Defaults to 1.\n        padding (int, optional): Padding applied to the input. Defaults to 0.\n        bias (bool, optional): If `True`, adds a learnable bias to the output. Defaults to `False`.\n    \"\"\"\n    def __init__(self, in_channels: int, kernel_size: int, stride: int = 1, padding: int = 0, bias: bool = False):\n        super(Model, self).__init__()\n        self.conv2d = nn.Conv2d(in_channels, in_channels, kernel_size, stride=stride, padding=padding, groups=in_channels, bias=bias)\n        \n    def forward(self, x: torch.Tensor) -> torch.Tensor:\n        \"\"\"\n        Performs the depthwise 2D convolution.\n\n        Args:\n            x (torch.Tensor): Input tensor of shape (batch_size, in_channels, height, width).\n\n        Returns:\n            torch.Tensor: Output tensor of shape (batch_size, in_channels, height_out, width_out).\n        \"\"\"\n        return self.conv2d(x)\n\n# Test code\nbatch_size = 16\nin_channels = 64\nkernel_size = 3\nwidth = 512\nheight = 512\nstride = 1\npadding = 0\n\ndef get_inputs():\n    x = torch.rand(batch_size, in_channels, height, width)\n    return [x]\n\ndef get_init_inputs():\n    return [in_channels, kernel_size, stride, padding]\n```\n",
-      "turn": 81,
+      "turn": 100,
       "phase": "repair",
       "code": "import torch\nimport triton\nimport triton.language as tl\n\n@triton.jit\ndef depthwise_conv2d_kernel(\n    input_ptr, output_ptr, weight_ptr, bias_ptr,\n    batch_size, in_channels, height, width, kernel_size,\n    stride, padding,\n    BLOCK_SIZE_H: tl.constexpr,\n    BLOCK_SIZE_W: tl.constexpr,\n    BLOCK_SIZE_C: tl.constexpr,\n    ACCUMULATION_DTYPE: tl.constexpr\n):\n    # Get thread indices\n    batch_idx = tl.program_id(0)\n    out_h_idx = tl.program_id(1)\n    out_w_idx = tl.program_id(2)\n    \n    # Calculate output dimensions\n    in_h = height\n    in_w = width\n    out_h = (in_h + 2 * padding - kernel_size) // stride + 1\n    out_w = (in_w + 2 * padding - kernel_size) // stride + 1\n    \n    # Shared memory for input tile and kernel\n    input_tile = tl.shared_memory(dtype=tl.float16, shape=(BLOCK_SIZE_H + 2 * padding, BLOCK_SIZE_W + 2 * padding))\n    kernel_tile = tl.shared_memory(dtype=tl.float16, shape=(kernel_size, kernel_size))\n    \n    # Load kernel once per block\n    for i in range(kernel_size):\n        for j in range(kernel_size):\n            if i < kernel_size and j < kernel_size:\n                kernel_tile[i, j] = tl.load(weight_ptr + i * kernel_size + j)\n    \n    # Synchronize threads\n    tl.sync()\n    \n    # Process each channel\n    for c in range(tl.cdiv(in_channels, BLOCK_SIZE_C)):\n        channel_offset = c * BLOCK_SIZE_C\n        \n        # Load input tile with padding\n        for i in range(BLOCK_SIZE_H + 2 * padding):\n            for j in range(BLOCK_SIZE_W + 2 * padding):\n                h_in = out_h_idx * stride + i - padding\n                w_in = out_w_idx * stride + j - padding\n                \n                if 0 <= h_in < in_h and 0 <= w_in < in_w:\n                    input_val = tl.load(input_ptr + batch_idx * in_channels * in_h * in_w + \n                                       (channel_offset + (i * BLOCK_SIZE_W + j) % BLOCK_SIZE_C) * in_h * in_w + \n                                       h_in * in_w + w_in)\n                else:\n                    input_val = tl.zeros((), dtype=tl.float16)\n                \n                input_tile[i, j] = input_val\n        \n        # Synchronize threads\n        tl.sync()\n        \n        # Perform convolution for this channel\n        for i in range(BLOCK_SIZE_H):\n            for j in range(BLOCK_SIZE_W):\n                if i < out_h and j < out_w:\n                    # Convolution computation\n                    acc = tl.zeros((), dtype=ACCUMULATION_DTYPE)\n                    \n                    for k1 in range(kernel_size):\n                        for k2 in range(kernel_size):\n                            h_in = i * stride + k1\n                            w_in = j * stride + k2\n                            \n                            input_val = input_tile[h_in, w_in]\n                            kernel_val = kernel_tile[k1, k2]\n                            \n                            acc += input_val * kernel_val\n                    \n                    # Add bias if needed\n                    if bias_ptr is not None:\n                        bias_val = tl.load(bias_ptr + channel_offset + (i * BLOCK_SIZE_W + j) % BLOCK_SIZE_C)\n                        acc += bias_val\n                    \n                    # Store result\n                    output_idx = batch_idx * in_channels * out_h * out_w + \\\n                                (channel_offset + (i * BLOCK_SIZE_W + j) % BLOCK_SIZE_C) * out_h * out_w + \\\n                                i * out_w + j\n                    \n                    tl.store(output_ptr + output_idx, acc.to(tl.float16))\n\nclass ModelNew(torch.nn.Module):\n    def __init__(self, in_channels: int, kernel_size: int, stride: int = 1, padding: int = 0, bias: bool = False):\n        super(ModelNew, self).__init__()\n        self.in_channels = in_channels\n        self.kernel_size = kernel_size\n        self.stride = stride\n        self.padding = padding\n        self.bias = bias\n        \n        # Initialize weights and biases\n        self.weight = torch.randn(in_channels, 1, kernel_size, kernel_size, dtype=torch.float16)\n        if bias:\n            self.bias = torch.randn(in_channels, dtype=torch.float16)\n        else:\n            self.register_parameter('bias', None)\n    \n    def forward(self, x: torch.Tensor) -> torch.Tensor:\n        batch_size, _, height, width = x.shape\n        \n        # Allocate output tensor\n        out_h = (height + 2 * padding - self.kernel_size) // self.stride + 1\n        out_w = (width + 2 * padding - self.kernel_size) // self.stride + 1\n        output = torch.empty(batch_size, self.in_channels, out_h, out_w, dtype=torch.float16, device=x.device)\n        \n        # Prepare grid configuration\n        grid = (\n            batch_size,\n            triton.cdiv(out_h, 16),\n            triton.cdiv(out_w, 16)\n        )\n        \n        # Launch kernel\n        depthwise_conv2d_kernel[grid](\n            x, output, self.weight, self.bias,\n            batch_size, self.in_channels, height, width, self.kernel_size,\n            self.stride, self.padding,\n            BLOCK_SIZE_H=16,\n            BLOCK_SIZE_W=16,\n            BLOCK_SIZE_C=32,\n            ACCUMULATION_DTYPE=tl.float32\n        )\n        \n        return output\n\n# Test code\nbatch_size = 16\nin_channels = 64\nkernel_size = 3\nwidth = 512\nheight = 512\nstride = 1\npadding = 0\n\ndef get_inputs():\n    x = torch.rand(batch_size, in_channels, height, width, dtype=torch.float16)\n    return [x]\n\ndef get_init_inputs():\n    return [in_channels, kernel_size, stride, padding]\n",
       "gen_status": "generated",
@@ -611,8 +744,8 @@
       "best_code": null,
       "best_turn": null,
       "no_improve_streak": 0,
-      "terminated": false,
-      "termination_reason": null,
+      "terminated": true,
+      "termination_reason": "k_max_reached",
       "history": [
         {
           "turn": 1,
@@ -1175,6 +1308,139 @@
         },
         {
           "turn": 81,
+          "compiled": false,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 82,
+          "compiled": false,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 83,
+          "compiled": false,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 84,
+          "compiled": false,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 85,
+          "compiled": false,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 86,
+          "compiled": false,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 87,
+          "compiled": false,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 88,
+          "compiled": false,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 89,
+          "compiled": false,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 90,
+          "compiled": false,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 91,
+          "compiled": false,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 92,
+          "compiled": false,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 93,
+          "compiled": false,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 94,
+          "compiled": false,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 95,
+          "compiled": false,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 96,
+          "compiled": false,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 97,
+          "compiled": false,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 98,
+          "compiled": false,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 99,
+          "compiled": false,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 100,
           "compiled": false,
           "correctness": false,
           "gen_status": "generated",
@@ -1190,7 +1456,7 @@
       "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
       "sample_index": 2,
       "original_prompt": "You are given a PyTorch reference implementation of a neural network operator.\nWrite a functionally equivalent GPU kernel in Triton.\n\nRequirements:\n- All tensor inputs and outputs are float16 (fp16). Accumulation precision is\n  your choice unless the reference dictates otherwise.\n- Target GPU: NVIDIA RTX PRO 6000 Blackwell (compute capability 12.0).\n- Your kernel must be a drop-in replacement: same input shapes, same output\n  shapes and dtype as the reference.\n- Output ONLY the complete Triton solution inside a single code block.\n  No explanation outside the code block.\n\nWrite a Triton kernel (triton.jit) with a Python wrapper. Provide the full\nPython file defining ModelNew that calls your Triton kernel.\n\nReference implementation:\n```python\nimport torch\nimport torch.nn as nn\n\nclass Model(nn.Module):\n    \"\"\"\n    Performs a depthwise 2D convolution operation with square input and square kernel.\n\n    Args:\n        in_channels (int): Number of channels in the input tensor.\n        kernel_size (int): Size of the convolution kernel.\n        stride (int, optional): Stride of the convolution. Defaults to 1.\n        padding (int, optional): Padding applied to the input. Defaults to 0.\n        bias (bool, optional): If `True`, adds a learnable bias to the output. Defaults to `False`.\n    \"\"\"\n    def __init__(self, in_channels: int, kernel_size: int, stride: int = 1, padding: int = 0, bias: bool = False):\n        super(Model, self).__init__()\n        self.conv2d = nn.Conv2d(in_channels, in_channels, kernel_size, stride=stride, padding=padding, groups=in_channels, bias=bias)\n        \n    def forward(self, x: torch.Tensor) -> torch.Tensor:\n        \"\"\"\n        Performs the depthwise 2D convolution.\n\n        Args:\n            x (torch.Tensor): Input tensor of shape (batch_size, in_channels, height, width).\n\n        Returns:\n            torch.Tensor: Output tensor of shape (batch_size, in_channels, height_out, width_out).\n        \"\"\"\n        return self.conv2d(x)\n\n# Test code\nbatch_size = 16\nin_channels = 64\nkernel_size = 3\nwidth = 512\nheight = 512\nstride = 1\npadding = 0\n\ndef get_inputs():\n    x = torch.rand(batch_size, in_channels, height, width)\n    return [x]\n\ndef get_init_inputs():\n    return [in_channels, kernel_size, stride, padding]\n```\n",
-      "turn": 81,
+      "turn": 100,
       "phase": "repair",
       "code": "import torch\nimport triton\nimport triton.language as tl\n\n@triton.jit\ndef depthwise_conv2d_kernel(\n    input_ptr, output_ptr, weight_ptr, bias_ptr,\n    batch_size, in_channels, height, width, kernel_size, stride, padding,\n    BLOCK_SIZE_H: tl.constexpr, BLOCK_SIZE_W: tl.constexpr,\n    BLOCK_SIZE_C: tl.constexpr\n):\n    # Get thread indices\n    batch_idx = tl.program_id(0)\n    channel_idx = tl.program_id(1)\n    h_idx = tl.program_id(2)\n    w_idx = tl.program_id(3)\n    \n    # Calculate output dimensions\n    out_height = (height + 2 * padding - kernel_size) // stride + 1\n    out_width = (width + 2 * padding - kernel_size) // stride + 1\n    \n    # Initialize accumulator with appropriate precision\n    acc = tl.zeros((1,), dtype=tl.float32)\n    \n    # Calculate global coordinates for output position\n    out_h_start = h_idx * stride\n    out_w_start = w_idx * stride\n    \n    # Perform convolution\n    for kh in range(kernel_size):\n        for kw in range(kernel_size):\n            # Load kernel weight\n            k_val = tl.load(weight_ptr + channel_idx * kernel_size * kernel_size + kh * kernel_size + kw)\n            \n            # Load input value with boundary checking\n            ih = out_h_start + kh - padding\n            iw = out_w_start + kw - padding\n            \n            if ih >= 0 and ih < height and iw >= 0 and iw < width:\n                i_val = tl.load(input_ptr + batch_idx * in_channels * height * width + \n                               channel_idx * height * width + ih * width + iw)\n                acc += i_val * k_val\n    \n    # Apply bias if present\n    if bias_ptr is not None:\n        bias_val = tl.load(bias_ptr + channel_idx)\n        acc += bias_val\n    \n    # Store result\n    if h_idx < out_height and w_idx < out_width:\n        output_idx = batch_idx * in_channels * out_height * out_width + \\\n                     channel_idx * out_height * out_width + \\\n                     h_idx * out_width + w_idx\n        tl.store(output_ptr + output_idx, acc.to(tl.float16))\n\ndef depthwise_conv2d_triton(input_tensor, weight, bias=None, stride=1, padding=0):\n    batch_size, in_channels, height, width = input_tensor.shape\n    kernel_size = weight.shape[-1]\n    \n    # Calculate output dimensions\n    out_height = (height + 2 * padding - kernel_size) // stride + 1\n    out_width = (width + 2 * padding - kernel_size) // stride + 1\n    \n    # Create output tensor\n    output = torch.empty(batch_size, in_channels, out_height, out_width, device=input_tensor.device, dtype=torch.float16)\n    \n    # Define grid dimensions\n    grid = (\n        batch_size,\n        in_channels,\n        triton.cdiv(out_height, 16),\n        triton.cdiv(out_width, 16)\n    )\n    \n    # Launch kernel\n    depthwise_conv2d_kernel[grid](\n        input_tensor,\n        output,\n        weight,\n        bias,\n        batch_size,\n        in_channels,\n        height,\n        width,\n        kernel_size,\n        stride,\n        padding,\n        BLOCK_SIZE_H=16,\n        BLOCK_SIZE_W=16,\n        BLOCK_SIZE_C=16\n    )\n    \n    return output\n\nclass ModelNew(torch.nn.Module):\n    def __init__(self, in_channels: int, kernel_size: int, stride: int = 1, padding: int = 0, bias: bool = False):\n        super(ModelNew, self).__init__()\n        self.in_channels = in_channels\n        self.kernel_size = kernel_size\n        self.stride = stride\n        self.padding = padding\n        self.bias = bias\n        \n        # Initialize weight and bias\n        self.weight = torch.nn.Parameter(torch.randn(in_channels, kernel_size, kernel_size, dtype=torch.float16))\n        if bias:\n            self.bias = torch.nn.Parameter(torch.randn(in_channels, dtype=torch.float16))\n        else:\n            self.register_parameter('bias', None)\n    \n    def forward(self, x: torch.Tensor) -> torch.Tensor:\n        return depthwise_conv2d_triton(x, self.weight, self.bias, self.stride, self.padding)\n\n# Test code\nbatch_size = 16\nin_channels = 64\nkernel_size = 3\nwidth = 512\nheight = 512\nstride = 1\npadding = 0\n\ndef get_inputs():\n    x = torch.rand(batch_size, in_channels, height, width, dtype=torch.float16)\n    return [x]\n\ndef get_init_inputs():\n    return [in_channels, kernel_size, stride, padding]\n",
       "gen_status": "generated",
@@ -1202,8 +1468,8 @@
       "best_code": null,
       "best_turn": null,
       "no_improve_streak": 0,
-      "terminated": false,
-      "termination_reason": null,
+      "terminated": true,
+      "termination_reason": "k_max_reached",
       "history": [
         {
           "turn": 1,
@@ -1766,6 +2032,139 @@
         },
         {
           "turn": 81,
+          "compiled": false,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 82,
+          "compiled": false,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 83,
+          "compiled": false,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 84,
+          "compiled": false,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 85,
+          "compiled": false,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 86,
+          "compiled": false,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 87,
+          "compiled": false,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 88,
+          "compiled": false,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 89,
+          "compiled": false,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 90,
+          "compiled": false,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 91,
+          "compiled": false,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 92,
+          "compiled": false,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 93,
+          "compiled": false,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 94,
+          "compiled": false,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 95,
+          "compiled": false,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 96,
+          "compiled": false,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 97,
+          "compiled": false,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 98,
+          "compiled": false,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 99,
+          "compiled": false,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 100,
           "compiled": false,
           "correctness": false,
           "gen_status": "generated",
@@ -1781,7 +2180,7 @@
       "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
       "sample_index": 3,
       "original_prompt": "You are given a PyTorch reference implementation of a neural network operator.\nWrite a functionally equivalent GPU kernel in Triton.\n\nRequirements:\n- All tensor inputs and outputs are float16 (fp16). Accumulation precision is\n  your choice unless the reference dictates otherwise.\n- Target GPU: NVIDIA RTX PRO 6000 Blackwell (compute capability 12.0).\n- Your kernel must be a drop-in replacement: same input shapes, same output\n  shapes and dtype as the reference.\n- Output ONLY the complete Triton solution inside a single code block.\n  No explanation outside the code block.\n\nWrite a Triton kernel (triton.jit) with a Python wrapper. Provide the full\nPython file defining ModelNew that calls your Triton kernel.\n\nReference implementation:\n```python\nimport torch\nimport torch.nn as nn\n\nclass Model(nn.Module):\n    \"\"\"\n    Performs a depthwise 2D convolution operation with square input and square kernel.\n\n    Args:\n        in_channels (int): Number of channels in the input tensor.\n        kernel_size (int): Size of the convolution kernel.\n        stride (int, optional): Stride of the convolution. Defaults to 1.\n        padding (int, optional): Padding applied to the input. Defaults to 0.\n        bias (bool, optional): If `True`, adds a learnable bias to the output. Defaults to `False`.\n    \"\"\"\n    def __init__(self, in_channels: int, kernel_size: int, stride: int = 1, padding: int = 0, bias: bool = False):\n        super(Model, self).__init__()\n        self.conv2d = nn.Conv2d(in_channels, in_channels, kernel_size, stride=stride, padding=padding, groups=in_channels, bias=bias)\n        \n    def forward(self, x: torch.Tensor) -> torch.Tensor:\n        \"\"\"\n        Performs the depthwise 2D convolution.\n\n        Args:\n            x (torch.Tensor): Input tensor of shape (batch_size, in_channels, height, width).\n\n        Returns:\n            torch.Tensor: Output tensor of shape (batch_size, in_channels, height_out, width_out).\n        \"\"\"\n        return self.conv2d(x)\n\n# Test code\nbatch_size = 16\nin_channels = 64\nkernel_size = 3\nwidth = 512\nheight = 512\nstride = 1\npadding = 0\n\ndef get_inputs():\n    x = torch.rand(batch_size, in_channels, height, width)\n    return [x]\n\ndef get_init_inputs():\n    return [in_channels, kernel_size, stride, padding]\n```\n",
-      "turn": 81,
+      "turn": 100,
       "phase": "repair",
       "code": "import torch\nimport triton\nimport triton.language as tl\n\n@triton.jit\ndef depthwise_conv2d_kernel(\n    input_ptr, \n    output_ptr, \n    weight_ptr,\n    bias_ptr,\n    batch_size,\n    in_channels,\n    height,\n    width,\n    kernel_size,\n    stride,\n    padding,\n    output_height,\n    output_width,\n    BLOCK_SIZE_H=16,\n    BLOCK_SIZE_W=16\n):\n    # Get thread indices\n    batch_idx = tl.program_id(0)\n    channel_idx = tl.program_id(1)\n    h_block = tl.program_id(2)\n    w_block = tl.program_id(3)\n    \n    # Calculate output dimensions\n    output_h = output_height\n    output_w = output_width\n    \n    # Each thread block processes one output position\n    if h_block * BLOCK_SIZE_H < output_h and w_block * BLOCK_SIZE_W < output_w:\n        # Initialize accumulator\n        acc = tl.zeros((BLOCK_SIZE_H, BLOCK_SIZE_W), dtype=tl.float32)\n        \n        # Load bias if needed\n        bias = tl.load(bias_ptr + channel_idx) if bias_ptr is not None else 0.0\n        \n        # Process kernel window\n        for kh in range(kernel_size):\n            for kw in range(kernel_size):\n                # Calculate input coordinates\n                ih = h_block * BLOCK_SIZE_H + kh\n                iw = w_block * BLOCK_SIZE_W + kw\n                \n                # Apply padding\n                ih_padded = ih * stride - padding\n                iw_padded = iw * stride - padding\n                \n                # Check bounds\n                if ih_padded >= 0 and ih_padded < height and iw_padded >= 0 and iw_padded < width:\n                    # Calculate input index\n                    input_idx = batch_idx * (in_channels * height * width) + \\\n                               channel_idx * (height * width) + \\\n                               ih_padded * width + iw_padded\n                    \n                    # Load input value\n                    input_val = tl.load(input_ptr + input_idx)\n                    \n                    # Load kernel weight\n                    weight_val = tl.load(weight_ptr + channel_idx * kernel_size * kernel_size + kh * kernel_size + kw)\n                    \n                    # Multiply with kernel weight\n                    acc += input_val * weight_val\n        \n        # Add bias\n        acc += bias\n        \n        # Calculate output index\n        output_idx = batch_idx * (in_channels * output_h * output_w) + \\\n                    channel_idx * (output_h * output_w) + \\\n                    h_block * BLOCK_SIZE_H * output_w + w_block * BLOCK_SIZE_W\n        \n        # Write back to global memory\n        tl.store(output_ptr + output_idx, acc.to(tl.float16))\n\nclass ModelNew(torch.nn.Module):\n    def __init__(self, in_channels: int, kernel_size: int, stride: int = 1, padding: int = 0, bias: bool = False):\n        super().__init__()\n        self.in_channels = in_channels\n        self.kernel_size = kernel_size\n        self.stride = stride\n        self.padding = padding\n        self.bias = bias\n        \n        # Initialize weights\n        self.weight = torch.randn(in_channels, kernel_size, kernel_size, dtype=torch.float16)\n        if bias:\n            self.bias_param = torch.randn(in_channels, dtype=torch.float16)\n        else:\n            self.register_parameter('bias_param', None)\n    \n    def forward(self, x: torch.Tensor) -> torch.Tensor:\n        batch_size, _, height, width = x.shape\n        \n        # Compute output dimensions\n        output_height = (height + 2 * self.padding - self.kernel_size) // self.stride + 1\n        output_width = (width + 2 * self.padding - self.kernel_size) // self.stride + 1\n        \n        # Create output tensor\n        output = torch.empty(batch_size, self.in_channels, output_height, output_width, dtype=torch.float16, device=x.device)\n        \n        # Launch kernel\n        grid = (\n            batch_size,\n            self.in_channels,\n            triton.cdiv(output_height, 16),\n            triton.cdiv(output_width, 16)\n        )\n        \n        # Kernel launch\n        depthwise_conv2d_kernel[grid](\n            x,\n            output,\n            self.weight,\n            self.bias_param,\n            batch_size,\n            self.in_channels,\n            height,\n            width,\n            self.kernel_size,\n            self.stride,\n            self.padding,\n            output_height,\n            output_width\n        )\n        \n        return output\n\n# Test code\nbatch_size = 16\nin_channels = 64\nkernel_size = 3\nwidth = 512\nheight = 512\nstride = 1\npadding = 0\n\ndef get_inputs():\n    x = torch.rand(batch_size, in_channels, height, width, dtype=torch.float16)\n    return [x]\n\ndef get_init_inputs():\n    return [in_channels, kernel_size, stride, padding]\n",
       "gen_status": "generated",
@@ -1792,15 +2191,15 @@
         "device": "cuda:0",
         "runtime_error": "at 22:14:\n    stride,\n    padding,\n    output_height,\n    output_width,\n    BLOCK_SIZE_H=16,\n    BLOCK_SIZE_W=16\n):\n    # Get thread indices\n    batch_idx = tl.program_id(0)\n    channel_idx = tl.pr...",
         "runtime_error_name": "triton.compiler.errors.CompilationError",
-        "runtime_error_traceback": "Traceback (most recent call last):\n  File \"/home/jun/kernel-lang-2x2/kernel_exp/.venv/lib/python3.10/site-packages/triton/language/core.py\", line 35, in wrapper\n    return fn(*args, **kwargs)\n  File \"/home/jun/kernel-lang-2x2/kernel_exp/.venv/lib/python3.10/site-packages/triton/language/core.py\", line 1157, in program_id\n    return semantic.program_id(axis, _builder)\n  File \"/home/jun/kernel-lang-2x2/kernel_exp/.venv/lib/python3.10/site-packages/triton/language/semantic.py\", line 28, in program_id\n    raise ValueError(f\"program_id axis must be 0, 1, or 2 but got {axis}\")\nValueError: program_id axis must be 0, 1, or 2 but got 3\n\nThe above exception was the direct cause of the following exception:\n\nTraceback (most recent call last):\n  File \"/home/jun/kernel-lang-2x2/kernel_exp/third_party/KernelBench/src/kernelbench/eval.py\", line 782, in run_and_check_correctness\n    output_new = model_new(*inputs)\n  File \"/home/jun/kernel-lang-2x2/kernel_exp/.venv/lib/python3.10/site-packages/torch/nn/modules/module.py\", line 1736, in _wrapped_call_impl\n    return self._call_impl(*args, **kwargs)\n  File \"/home/jun/kernel-lang-2x2/kernel_exp/.venv/lib/python3.10/site-packages/torch/nn/modules/module.py\", line 1747, in _call_impl\n    return forward_call(*args, **kwargs)\n  File \"/tmp/tmp5v5jcp9w.py\", line 114, in forward\n    depthwise_conv2d_kernel[grid](\n  File \"/home/jun/kernel-lang-2x2/kernel_exp/.venv/lib/python3.10/site-packages/triton/runtime/jit.py\", line 345, in <lambda>\n    return lambda *args, **kwargs: self.run(grid=grid, warmup=False, *args, **kwargs)\n  File \"/home/jun/kernel-lang-2x2/kernel_exp/.venv/lib/python3.10/site-packages/triton/runtime/jit.py\", line 662, in run\n    kernel = self.compile(\n  File \"/home/jun/kernel-lang-2x2/kernel_exp/.venv/lib/python3.10/site-packages/triton/compiler/compiler.py\", line 276, in compile\n    module = src.make_ir(options, codegen_fns, context)\n  File \"/home/jun/kernel-lang-2x2/kernel_exp/.venv/lib/python3.10/site-packages/triton/compiler/compiler.py\", line 113, in make_ir\n    return ast_to_ttir(self.fn, self, context=context, options=options, codegen_fns=codegen_fns)\ntriton.compiler.errors.CompilationError: at 22:14:\n    stride,\n    padding,\n    output_height,\n    output_width,\n    BLOCK_SIZE_H=16,\n    BLOCK_SIZE_W=16\n):\n    # Get thread indices\n    batch_idx = tl.program_id(0)\n    channel_idx = tl.program_id(1)\n    h_block = tl.program_id(2)\n    w_block = tl.program_id(3)\n              ^\n"
+        "runtime_error_traceback": "Traceback (most recent call last):\n  File \"/home/jun/kernel-lang-2x2/kernel_exp/.venv/lib/python3.10/site-packages/triton/language/core.py\", line 35, in wrapper\n    return fn(*args, **kwargs)\n  File \"/home/jun/kernel-lang-2x2/kernel_exp/.venv/lib/python3.10/site-packages/triton/language/core.py\", line 1157, in program_id\n    return semantic.program_id(axis, _builder)\n  File \"/home/jun/kernel-lang-2x2/kernel_exp/.venv/lib/python3.10/site-packages/triton/language/semantic.py\", line 28, in program_id\n    raise ValueError(f\"program_id axis must be 0, 1, or 2 but got {axis}\")\nValueError: program_id axis must be 0, 1, or 2 but got 3\n\nThe above exception was the direct cause of the following exception:\n\nTraceback (most recent call last):\n  File \"/home/jun/kernel-lang-2x2/kernel_exp/third_party/KernelBench/src/kernelbench/eval.py\", line 782, in run_and_check_correctness\n    output_new = model_new(*inputs)\n  File \"/home/jun/kernel-lang-2x2/kernel_exp/.venv/lib/python3.10/site-packages/torch/nn/modules/module.py\", line 1736, in _wrapped_call_impl\n    return self._call_impl(*args, **kwargs)\n  File \"/home/jun/kernel-lang-2x2/kernel_exp/.venv/lib/python3.10/site-packages/torch/nn/modules/module.py\", line 1747, in _call_impl\n    return forward_call(*args, **kwargs)\n  File \"/tmp/tmpn78fycfx.py\", line 114, in forward\n    depthwise_conv2d_kernel[grid](\n  File \"/home/jun/kernel-lang-2x2/kernel_exp/.venv/lib/python3.10/site-packages/triton/runtime/jit.py\", line 345, in <lambda>\n    return lambda *args, **kwargs: self.run(grid=grid, warmup=False, *args, **kwargs)\n  File \"/home/jun/kernel-lang-2x2/kernel_exp/.venv/lib/python3.10/site-packages/triton/runtime/jit.py\", line 662, in run\n    kernel = self.compile(\n  File \"/home/jun/kernel-lang-2x2/kernel_exp/.venv/lib/python3.10/site-packages/triton/compiler/compiler.py\", line 276, in compile\n    module = src.make_ir(options, codegen_fns, context)\n  File \"/home/jun/kernel-lang-2x2/kernel_exp/.venv/lib/python3.10/site-packages/triton/compiler/compiler.py\", line 113, in make_ir\n    return ast_to_ttir(self.fn, self, context=context, options=options, codegen_fns=codegen_fns)\ntriton.compiler.errors.CompilationError: at 22:14:\n    stride,\n    padding,\n    output_height,\n    output_width,\n    BLOCK_SIZE_H=16,\n    BLOCK_SIZE_W=16\n):\n    # Get thread indices\n    batch_idx = tl.program_id(0)\n    channel_idx = tl.program_id(1)\n    h_block = tl.program_id(2)\n    w_block = tl.program_id(3)\n              ^\n"
       },
       "last_timing": null,
       "best_speedup": null,
       "best_code": null,
       "best_turn": null,
       "no_improve_streak": 0,
-      "terminated": false,
-      "termination_reason": null,
+      "terminated": true,
+      "termination_reason": "k_max_reached",
       "history": [
         {
           "turn": 1,
@@ -2363,6 +2762,139 @@
         },
         {
           "turn": 81,
+          "compiled": true,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 82,
+          "compiled": true,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 83,
+          "compiled": true,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 84,
+          "compiled": true,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 85,
+          "compiled": true,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 86,
+          "compiled": true,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 87,
+          "compiled": true,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 88,
+          "compiled": true,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 89,
+          "compiled": true,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 90,
+          "compiled": true,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 91,
+          "compiled": true,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 92,
+          "compiled": true,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 93,
+          "compiled": true,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 94,
+          "compiled": true,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 95,
+          "compiled": true,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 96,
+          "compiled": true,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 97,
+          "compiled": true,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 98,
+          "compiled": true,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 99,
+          "compiled": true,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 100,
           "compiled": true,
           "correctness": false,
           "gen_status": "generated",
@@ -2378,7 +2910,7 @@
       "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
       "sample_index": 4,
       "original_prompt": "You are given a PyTorch reference implementation of a neural network operator.\nWrite a functionally equivalent GPU kernel in Triton.\n\nRequirements:\n- All tensor inputs and outputs are float16 (fp16). Accumulation precision is\n  your choice unless the reference dictates otherwise.\n- Target GPU: NVIDIA RTX PRO 6000 Blackwell (compute capability 12.0).\n- Your kernel must be a drop-in replacement: same input shapes, same output\n  shapes and dtype as the reference.\n- Output ONLY the complete Triton solution inside a single code block.\n  No explanation outside the code block.\n\nWrite a Triton kernel (triton.jit) with a Python wrapper. Provide the full\nPython file defining ModelNew that calls your Triton kernel.\n\nReference implementation:\n```python\nimport torch\nimport torch.nn as nn\n\nclass Model(nn.Module):\n    \"\"\"\n    Performs a depthwise 2D convolution operation with square input and square kernel.\n\n    Args:\n        in_channels (int): Number of channels in the input tensor.\n        kernel_size (int): Size of the convolution kernel.\n        stride (int, optional): Stride of the convolution. Defaults to 1.\n        padding (int, optional): Padding applied to the input. Defaults to 0.\n        bias (bool, optional): If `True`, adds a learnable bias to the output. Defaults to `False`.\n    \"\"\"\n    def __init__(self, in_channels: int, kernel_size: int, stride: int = 1, padding: int = 0, bias: bool = False):\n        super(Model, self).__init__()\n        self.conv2d = nn.Conv2d(in_channels, in_channels, kernel_size, stride=stride, padding=padding, groups=in_channels, bias=bias)\n        \n    def forward(self, x: torch.Tensor) -> torch.Tensor:\n        \"\"\"\n        Performs the depthwise 2D convolution.\n\n        Args:\n            x (torch.Tensor): Input tensor of shape (batch_size, in_channels, height, width).\n\n        Returns:\n            torch.Tensor: Output tensor of shape (batch_size, in_channels, height_out, width_out).\n        \"\"\"\n        return self.conv2d(x)\n\n# Test code\nbatch_size = 16\nin_channels = 64\nkernel_size = 3\nwidth = 512\nheight = 512\nstride = 1\npadding = 0\n\ndef get_inputs():\n    x = torch.rand(batch_size, in_channels, height, width)\n    return [x]\n\ndef get_init_inputs():\n    return [in_channels, kernel_size, stride, padding]\n```\n",
-      "turn": 81,
+      "turn": 100,
       "phase": "repair",
       "code": "import torch\nimport triton\nimport triton.language as tl\n\n@triton.jit\ndef depthwise_conv2d_kernel(\n    input_ptr, \n    output_ptr, \n    weight_ptr,\n    bias_ptr,\n    batch_size,\n    in_channels,\n    height,\n    width,\n    kernel_size,\n    stride,\n    padding,\n    output_height,\n    output_width,\n    BLOCK_SIZE_H=16,\n    BLOCK_SIZE_W=16,\n    BLOCK_SIZE_C=16\n):\n    # Get block indices\n    batch_idx = tl.program_id(0)\n    channel_idx = tl.program_id(1)\n    h_block = tl.program_id(2)\n    w_block = tl.program_id(3)\n    \n    # Calculate output coordinates\n    out_h_start = h_block * BLOCK_SIZE_H\n    out_w_start = w_block * BLOCK_SIZE_W\n    \n    # Initialize accumulator\n    acc = tl.zeros((BLOCK_SIZE_H, BLOCK_SIZE_W), dtype=tl.float32)\n    \n    # Load kernel weights for this channel\n    weight_base = weight_ptr + channel_idx * kernel_size * kernel_size\n    \n    # Loop over kernel elements\n    for kh in range(kernel_size):\n        for kw in range(kernel_size):\n            # Calculate input coordinates\n            ih = out_h_start * stride + kh - padding\n            iw = out_w_start * stride + kw - padding\n            \n            # Check bounds\n            if ih >= 0 and ih < height and iw >= 0 and iw < width:\n                # Load input element\n                input_val = tl.load(input_ptr + batch_idx * in_channels * height * width + \n                                  channel_idx * height * width + \n                                  ih * width + iw, mask=(ih < height) & (iw < width))\n                # Load kernel weight\n                weight_val = tl.load(weight_base + kh * kernel_size + kw)\n                # Multiply and accumulate\n                acc += input_val * weight_val\n    \n    # Add bias if present\n    if bias_ptr != 0:\n        bias_val = tl.load(bias_ptr + channel_idx)\n        acc += bias_val\n    \n    # Store result\n    for i in range(BLOCK_SIZE_H):\n        for j in range(BLOCK_SIZE_W):\n            if out_h_start + i < output_height and out_w_start + j < output_width:\n                output_idx = batch_idx * in_channels * output_height * output_width + \\\n                           channel_idx * output_height * output_width + \\\n                           (out_h_start + i) * output_width + (out_w_start + j)\n                tl.store(output_ptr + output_idx, acc[i, j].to(tl.float16))\n\nclass ModelNew(torch.nn.Module):\n    def __init__(self, in_channels: int, kernel_size: int, stride: int = 1, padding: int = 0, bias: bool = False):\n        super(ModelNew, self).__init__()\n        self.in_channels = in_channels\n        self.kernel_size = kernel_size\n        self.stride = stride\n        self.padding = padding\n        self.bias = bias\n        \n        # Initialize weight and bias tensors\n        self.weight = torch.randn(in_channels, kernel_size, kernel_size, dtype=torch.float16, device='cuda')\n        if bias:\n            self.bias = torch.randn(in_channels, dtype=torch.float16, device='cuda')\n        else:\n            self.register_parameter('bias', None)\n            \n    def forward(self, x: torch.Tensor) -> torch.Tensor:\n        # Ensure input is on GPU and in correct dtype\n        if not x.is_cuda or x.dtype != torch.float16:\n            x = x.to(device='cuda', dtype=torch.float16)\n            \n        batch_size, _, height, width = x.shape\n        \n        # Calculate output dimensions\n        output_height = (height + 2 * self.padding - self.kernel_size) // self.stride + 1\n        output_width = (width + 2 * self.padding - self.kernel_size) // self.stride + 1\n        \n        # Create output tensor\n        output = torch.empty(batch_size, self.in_channels, output_height, output_width, \n                           device=x.device, dtype=torch.float16)\n        \n        # Launch kernel\n        grid = (\n            batch_size,\n            self.in_channels,\n            triton.cdiv(output_height, 16),\n            triton.cdiv(output_width, 16)\n        )\n        \n        # Prepare pointers\n        input_ptr = x.data_ptr()\n        output_ptr = output.data_ptr()\n        weight_ptr = self.weight.data_ptr()\n        bias_ptr = self.bias.data_ptr() if self.bias is not None else 0\n        \n        # Launch kernel\n        depthwise_conv2d_kernel[grid](\n            input_ptr,\n            output_ptr,\n            weight_ptr,\n            bias_ptr,\n            batch_size,\n            self.in_channels,\n            height,\n            width,\n            self.kernel_size,\n            self.stride,\n            self.padding,\n            output_height,\n            output_width\n        )\n        \n        return output\n\n# Test code\nbatch_size = 16\nin_channels = 64\nkernel_size = 3\nwidth = 512\nheight = 512\nstride = 1\npadding = 0\n\ndef get_inputs():\n    x = torch.rand(batch_size, in_channels, height, width, dtype=torch.float16, device='cuda')\n    return [x]\n\ndef get_init_inputs():\n    return [in_channels, kernel_size, stride, padding]\n",
       "gen_status": "generated",
@@ -2390,8 +2922,8 @@
       "best_code": null,
       "best_turn": null,
       "no_improve_streak": 0,
-      "terminated": false,
-      "termination_reason": null,
+      "terminated": true,
+      "termination_reason": "k_max_reached",
       "history": [
         {
           "turn": 1,
@@ -2958,6 +3490,139 @@
           "correctness": false,
           "gen_status": "generated",
           "speedup": null
+        },
+        {
+          "turn": 82,
+          "compiled": false,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 83,
+          "compiled": false,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 84,
+          "compiled": false,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 85,
+          "compiled": false,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 86,
+          "compiled": false,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 87,
+          "compiled": false,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 88,
+          "compiled": false,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 89,
+          "compiled": false,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 90,
+          "compiled": false,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 91,
+          "compiled": false,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 92,
+          "compiled": false,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 93,
+          "compiled": false,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 94,
+          "compiled": false,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 95,
+          "compiled": false,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 96,
+          "compiled": false,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 97,
+          "compiled": false,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 98,
+          "compiled": false,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 99,
+          "compiled": false,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 100,
+          "compiled": false,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
         }
       ]
     },
@@ -2969,26 +3634,26 @@
       "model": "openai/gpt-oss-120b",
       "sample_index": 900,
       "original_prompt": "You are given a PyTorch reference implementation of a neural network operator.\nWrite a functionally equivalent GPU kernel in Triton.\n\nRequirements:\n- All tensor inputs and outputs are float16 (fp16). Accumulation precision is\n  your choice unless the reference dictates otherwise.\n- Target GPU: NVIDIA A100 (compute capability 8.0).\n- Your kernel must be a drop-in replacement: same input shapes, same output\n  shapes and dtype as the reference.\n- Output ONLY the complete Triton solution inside a single code block.\n  No explanation outside the code block.\n\nWrite a Triton kernel (triton.jit) with a Python wrapper. Provide the full\nPython file defining ModelNew that calls your Triton kernel.\n\nReference implementation:\n```python\nimport torch\nimport torch.nn as nn\n\nclass Model(nn.Module):\n    \"\"\"\n    Performs a depthwise 2D convolution operation with square input and square kernel.\n\n    Args:\n        in_channels (int): Number of channels in the input tensor.\n        kernel_size (int): Size of the convolution kernel.\n        stride (int, optional): Stride of the convolution. Defaults to 1.\n        padding (int, optional): Padding applied to the input. Defaults to 0.\n        bias (bool, optional): If `True`, adds a learnable bias to the output. Defaults to `False`.\n    \"\"\"\n    def __init__(self, in_channels: int, kernel_size: int, stride: int = 1, padding: int = 0, bias: bool = False):\n        super(Model, self).__init__()\n        self.conv2d = nn.Conv2d(in_channels, in_channels, kernel_size, stride=stride, padding=padding, groups=in_channels, bias=bias)\n        \n    def forward(self, x: torch.Tensor) -> torch.Tensor:\n        \"\"\"\n        Performs the depthwise 2D convolution.\n\n        Args:\n            x (torch.Tensor): Input tensor of shape (batch_size, in_channels, height, width).\n\n        Returns:\n            torch.Tensor: Output tensor of shape (batch_size, in_channels, height_out, width_out).\n        \"\"\"\n        return self.conv2d(x)\n\n# Test code\nbatch_size = 16\nin_channels = 64\nkernel_size = 3\nwidth = 512\nheight = 512\nstride = 1\npadding = 0\n\ndef get_inputs():\n    x = torch.rand(batch_size, in_channels, height, width)\n    return [x]\n\ndef get_init_inputs():\n    return [in_channels, kernel_size, stride, padding]\n```\n",
-      "turn": 81,
+      "turn": 100,
       "phase": "repair",
-      "code": "# -*- coding: utf-8 -*-\n\"\"\"\nDepthwise Conv2d (fp16 I/O, fp32 accumulation) Triton implementation.\nDrop\u2011in replacement for torch.nn.Conv2d(groups=in_channels) on NVIDIA A100 (SM80).\n\"\"\"\n\nimport torch\nimport triton\nimport triton.language as tl\n\n\n@triton.jit\ndef depthwise_conv_kernel(\n    # pointers\n    inp_ptr,          # *fp16  [B, C, H, W]\n    weight_ptr,       # *fp16  [C, K, K]\n    bias_ptr,         # *fp16  [C]   (may point to zeros)\n    out_ptr,          # *fp16  [B, C, OH, OW]\n    # runtime sizes (int32 scalars)\n    B, C, H, W,\n    stride, padding,\n    OH, OW,\n    # compile\u2011time constant\n    K: tl.constexpr,\n):\n    \"\"\"\n    One program instance computes ONE output element (b, c, oh, ow).\n\n    Grid layout:\n        program_id(0) -> batch index (0 .. B-1)\n        program_id(1) -> channel index (0 .. C-1)\n        program_id(2) -> spatial index (0 .. OH*OW-1)\n    \"\"\"\n    b = tl.program_id(0)\n    c = tl.program_id(1)\n    spatial_idx = tl.program_id(2)\n\n    oh = spatial_idx // OW\n    ow = spatial_idx - oh * OW\n\n    # accumulator in fp32\n    acc = tl.float32(0.0)\n\n    # iterate over kernel\n    for ki in range(K):\n        for kj in range(K):\n            in_y = oh * stride - padding + ki\n            in_x = ow * stride - padding + kj\n\n            # mask for padding\n            valid = (in_y >= 0) & (in_y < H) & (in_x >= 0) & (in_x < W)\n\n            # clamp coordinates to 0 when invalid to avoid OOB address calculation\n            in_y_safe = tl.where(valid, in_y, 0)\n            in_x_safe = tl.where(valid, in_x, 0)\n\n            # linear offset for input (NCHW)\n            inp_offset = ((b * C + c) * H + in_y_safe) * W + in_x_safe\n            inp = tl.load(\n                inp_ptr + inp_offset,\n                mask=valid,\n                other=tl.float16(0.0)\n            ).to(tl.float32)\n\n            # linear offset for weight (C, K, K)\n            w_offset = (c * K + ki) * K + kj\n            w = tl.load(weight_ptr + w_offset).to(tl.float32)\n\n            acc += inp * w\n\n    # add bias (fp32)\n    bias = tl.load(bias_ptr + c).to(tl.float32)\n    acc += bias\n\n    # store output (fp16)\n    out_offset = ((b * C + c) * OH + oh) * OW + ow\n    tl.store(out_ptr + out_offset, acc.to(tl.float16))\n\n\nclass ModelNew(torch.nn.Module):\n    \"\"\"\n    Triton\u2011based depthwise Conv2d replacement.\n    All tensors are fp16; accumulation performed in fp32.\n    \"\"\"\n\n    def __init__(\n        self,\n        in_channels: int,\n        kernel_size: int,\n        stride: int = 1,\n        padding: int = 0,\n        bias: bool = False,\n    ):\n        super().__init__()\n        self.in_channels = in_channels\n        self.kernel_size = kernel_size\n        self.stride = stride\n        self.padding = padding\n        self.bias_flag = bias\n\n        # weight: (C, K, K) fp16\n        self.weight = torch.nn.Parameter(\n            torch.randn(in_channels, kernel_size, kernel_size, dtype=torch.float16)\n        )\n        if bias:\n            self.bias = torch.nn.Parameter(\n                torch.randn(in_channels, dtype=torch.float16)\n            )\n        else:\n            # zero bias to keep a valid pointer\n            self.register_parameter(\n                \"bias\",\n                torch.nn.Parameter(\n                    torch.zeros(in_channels, dtype=torch.float16),\n                    requires_grad=False,\n                ),\n            )\n\n    @torch.no_grad()\n    def forward(self, x: torch.Tensor) -> torch.Tensor:\n        \"\"\"\n        x: (B, C, H, W)  fp16\n        returns: (B, C, OH, OW) fp16\n        \"\"\"\n        if x.dtype != torch.float16:\n            raise TypeError(\"Input must be torch.float16\")\n        if not x.is_cuda:\n            raise RuntimeError(\"Input tensor must be on CUDA device\")\n        x = x.contiguous()\n\n        B, C, H, W = x.shape\n        K = self.kernel_size\n        stride = self.stride\n        padding = self.padding\n\n        OH = (H + 2 * padding - K) // stride + 1\n        OW = (W + 2 * padding - K) // stride + 1\n\n        out = torch.empty((B, C, OH, OW), dtype=torch.float16, device=x.device)\n\n        # Grid: (batch, channel, spatial)\n        grid = (B, C, OH * OW)\n\n        depthwise_conv_kernel[grid](\n            # pointers\n            x,\n            self.weight,\n            self.bias,\n            out,\n            # runtime sizes\n            B,\n            C,\n            H,\n            W,\n            stride,\n            padding,\n            OH,\n            OW,\n            # compile\u2011time constant\n            K=K,\n            # launch config (tuned for A100)\n            num_warps=4,\n            num_stages=2,\n        )\n        return out\n",
+      "code": "# -*- coding: utf-8 -*-\n\"\"\"\nTriton implementation of a depth\u2011wise 2\u2011D convolution (fp16 I/O) that matches\ntorch.nn.Conv2d(groups=in_channels).  Works on NVIDIA A100 (SM80).\n\"\"\"\n\nimport torch\nimport torch.nn as nn\nimport triton\nimport triton.language as tl\n\n\n@triton.jit\ndef dw_conv_kernel(\n    # pointers\n    inp_ptr,      # *fp16  [B, C, H, W]\n    weight_ptr,   # *fp16  [C, K, K]  (flattened)\n    bias_ptr,     # *fp16  [C]\n    out_ptr,      # *fp16  [B, C, OH, OW]\n    # runtime scalar values (int64)\n    B, C, H, W,\n    stride, padding,\n    OH, OW,\n    # compile\u2011time constant\n    K: tl.constexpr,\n):\n    \"\"\"\n    One program instance computes one output pixel (b, c, oh, ow).\n    Grid dimensions: (B*C, OH, OW)\n    \"\"\"\n    pid_bc = tl.program_id(0)   # combined batch and channel index\n    pid_y  = tl.program_id(1)   # output y\n    pid_x  = tl.program_id(2)   # output x\n\n    total_bc = B * C\n    if pid_bc >= total_bc:\n        return\n\n    # decode batch & channel\n    b = pid_bc // C\n    c = pid_bc % C\n\n    oh = pid_y\n    ow = pid_x\n\n    # top\u2011left corner of the receptive field in the input tensor\n    in_y0 = oh * stride - padding\n    in_x0 = ow * stride - padding\n\n    acc = tl.float32(0.0)\n\n    # convolution over K\u00d7K kernel\n    for ki in range(K):\n        for kj in range(K):\n            iy = in_y0 + ki\n            ix = in_x0 + kj\n\n            # mask for padding handling\n            valid = (iy >= 0) & (iy < H) & (ix >= 0) & (ix < W)\n\n            # clamp indices to a safe range for pointer arithmetic\n            iy_safe = tl.where(iy >= 0, iy, 0)\n            ix_safe = tl.where(ix >= 0, ix, 0)\n\n            # input offset (flattened)\n            inp_offset = ((b * C + c) * H + iy_safe) * W + ix_safe\n            inp_val = tl.load(inp_ptr + inp_offset, mask=valid, other=tl.float16(0.0))\n\n            # weight offset (flattened)\n            w_offset = (c * K + ki) * K + kj\n            w_val = tl.load(weight_ptr + w_offset)\n\n            acc += tl.float32(inp_val) * tl.float32(w_val)\n\n    # add bias\n    bias_val = tl.load(bias_ptr + c)\n    acc += tl.float32(bias_val)\n\n    # store result\n    out_offset = ((b * C + c) * OH + oh) * OW + ow\n    tl.store(out_ptr + out_offset, acc.to(tl.float16))\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    Triton\u2011based depth\u2011wise Conv2d (groups = in_channels). Mirrors the\n    torch.nn.Conv2d signature used in the reference implementation.\n    \"\"\"\n    def __init__(\n        self,\n        in_channels: int,\n        kernel_size: int,\n        stride: int = 1,\n        padding: int = 0,\n        bias: bool = False,\n    ):\n        super().__init__()\n        self.in_channels = in_channels\n        self.kernel_size = kernel_size\n        self.stride = stride\n        self.padding = padding\n        self.use_bias = bias\n\n        # weight layout matches torch.Conv2d(groups=in_channels): (C, 1, K, K)\n        self.weight = nn.Parameter(\n            torch.randn(\n                in_channels,\n                1,\n                kernel_size,\n                kernel_size,\n                dtype=torch.float16,\n                device=\"cuda\",\n            )\n        )\n        if bias:\n            self.bias = nn.Parameter(\n                torch.randn(in_channels, dtype=torch.float16, device=\"cuda\")\n            )\n        else:\n            # zero bias \u2013 simplifies kernel logic\n            self.register_parameter(\n                \"bias\",\n                nn.Parameter(\n                    torch.zeros(in_channels, dtype=torch.float16, device=\"cuda\"),\n                    requires_grad=False,\n                ),\n            )\n\n    @torch.no_grad()\n    def forward(self, x: torch.Tensor) -> torch.Tensor:\n        \"\"\"\n        x: (B, C, H, W)  fp16 CUDA tensor\n        returns: (B, C, OH, OW) fp16 CUDA tensor\n        \"\"\"\n        if x.dtype != torch.float16:\n            raise TypeError(\"Input must be torch.float16\")\n        if not x.is_cuda:\n            raise RuntimeError(\"Input tensor must be on CUDA device\")\n        x = x.contiguous()\n\n        # reshape weight to (C, K, K) as expected by the kernel\n        w = self.weight.contiguous().view(self.in_channels, self.kernel_size, self.kernel_size)\n        b = self.bias.contiguous()\n\n        B, C, H, W = x.shape\n        K = self.kernel_size\n        stride = self.stride\n        padding = self.padding\n\n        OH = (H + 2 * padding - K) // stride + 1\n        OW = (W + 2 * padding - K) // stride + 1\n\n        out = torch.empty((B, C, OH, OW), dtype=torch.float16, device=x.device)\n\n        # launch grid: one program per (batch*channel, out_y, out_x)\n        grid = (B * C, OH, OW)\n\n        dw_conv_kernel[grid](\n            # pointers\n            x,\n            w,\n            b,\n            out,\n            # runtime values\n            B,\n            C,\n            H,\n            W,\n            stride,\n            padding,\n            OH,\n            OW,\n            # compile\u2011time constants\n            K=K,\n            # launch config tuned for A100\n            num_warps=4,\n            num_stages=2,\n        )\n        return out\n",
       "gen_status": "generated",
       "compiled": true,
       "correctness": false,
       "metadata": {
         "hardware": "NVIDIA A100 80GB PCIe",
         "device": "cuda:0",
-        "runtime_error": "at 30:10:\n        program_id(1) -> channel index (0 .. C-1)\n        program_id(2) -> spatial index (0 .. OH*OW-1)\n    \"\"\"\n    b = tl.program_id(0)\n    c = tl.program_id(1)\n    spatial_idx = tl.prog...",
+        "runtime_error": "at 37:10:\n    # decode batch & channel\n    b = pid_bc // C\n    c = pid_bc % C\n\n    oh = pid_y\n    ow = pid_x\n\n    # top\u2011left corner of the receptive field in the input tensor\n    in_y0 = oh * strid...",
         "runtime_error_name": "triton.compiler.errors.CompilationError",
-        "runtime_error_traceback": "Traceback (most recent call last):\n  File \"/home/jun/kernel-lang-2x2/kernel_exp/third_party/KernelBench/src/kernelbench/eval.py\", line 782, in run_and_check_correctness\n    output_new = model_new(*inputs)\n  File \"/home/jun/kernel-lang-2x2/kernel_exp/.venv/lib/python3.10/site-packages/torch/nn/modules/module.py\", line 1736, in _wrapped_call_impl\n    return self._call_impl(*args, **kwargs)\n  File \"/home/jun/kernel-lang-2x2/kernel_exp/.venv/lib/python3.10/site-packages/torch/nn/modules/module.py\", line 1747, in _call_impl\n    return forward_call(*args, **kwargs)\n  File \"/home/jun/kernel-lang-2x2/kernel_exp/.venv/lib/python3.10/site-packages/torch/utils/_contextlib.py\", line 116, in decorate_context\n    return func(*args, **kwargs)\n  File \"/tmp/tmp7y6fuyj2.py\", line 144, in forward\n    depthwise_conv_kernel[grid](\n  File \"/home/jun/kernel-lang-2x2/kernel_exp/.venv/lib/python3.10/site-packages/triton/runtime/jit.py\", line 345, in <lambda>\n    return lambda *args, **kwargs: self.run(grid=grid, warmup=False, *args, **kwargs)\n  File \"/home/jun/kernel-lang-2x2/kernel_exp/.venv/lib/python3.10/site-packages/triton/runtime/jit.py\", line 662, in run\n    kernel = self.compile(\n  File \"/home/jun/kernel-lang-2x2/kernel_exp/.venv/lib/python3.10/site-packages/triton/compiler/compiler.py\", line 276, in compile\n    module = src.make_ir(options, codegen_fns, context)\n  File \"/home/jun/kernel-lang-2x2/kernel_exp/.venv/lib/python3.10/site-packages/triton/compiler/compiler.py\", line 113, in make_ir\n    return ast_to_ttir(self.fn, self, context=context, options=options, codegen_fns=codegen_fns)\ntriton.compiler.errors.CompilationError: at 30:10:\n        program_id(1) -> channel index (0 .. C-1)\n        program_id(2) -> spatial index (0 .. OH*OW-1)\n    \"\"\"\n    b = tl.program_id(0)\n    c = tl.program_id(1)\n    spatial_idx = tl.program_id(2)\n\n    oh = spatial_idx // OW\n    ow = spatial_idx - oh * OW\n\n    # accumulator in fp32\n    acc = tl.float32(0.0)\n          ^\nTypeError(\"'dtype' object is not callable\")\n"
+        "runtime_error_traceback": "Traceback (most recent call last):\n  File \"/home/jun/kernel-lang-2x2/kernel_exp/third_party/KernelBench/src/kernelbench/eval.py\", line 782, in run_and_check_correctness\n    output_new = model_new(*inputs)\n  File \"/home/jun/kernel-lang-2x2/kernel_exp/.venv/lib/python3.10/site-packages/torch/nn/modules/module.py\", line 1736, in _wrapped_call_impl\n    return self._call_impl(*args, **kwargs)\n  File \"/home/jun/kernel-lang-2x2/kernel_exp/.venv/lib/python3.10/site-packages/torch/nn/modules/module.py\", line 1747, in _call_impl\n    return forward_call(*args, **kwargs)\n  File \"/home/jun/kernel-lang-2x2/kernel_exp/.venv/lib/python3.10/site-packages/torch/utils/_contextlib.py\", line 116, in decorate_context\n    return func(*args, **kwargs)\n  File \"/tmp/tmph_haa_16.py\", line 158, in forward\n    dw_conv_kernel[grid](\n  File \"/home/jun/kernel-lang-2x2/kernel_exp/.venv/lib/python3.10/site-packages/triton/runtime/jit.py\", line 345, in <lambda>\n    return lambda *args, **kwargs: self.run(grid=grid, warmup=False, *args, **kwargs)\n  File \"/home/jun/kernel-lang-2x2/kernel_exp/.venv/lib/python3.10/site-packages/triton/runtime/jit.py\", line 662, in run\n    kernel = self.compile(\n  File \"/home/jun/kernel-lang-2x2/kernel_exp/.venv/lib/python3.10/site-packages/triton/compiler/compiler.py\", line 276, in compile\n    module = src.make_ir(options, codegen_fns, context)\n  File \"/home/jun/kernel-lang-2x2/kernel_exp/.venv/lib/python3.10/site-packages/triton/compiler/compiler.py\", line 113, in make_ir\n    return ast_to_ttir(self.fn, self, context=context, options=options, codegen_fns=codegen_fns)\ntriton.compiler.errors.CompilationError: at 37:10:\n    # decode batch & channel\n    b = pid_bc // C\n    c = pid_bc % C\n\n    oh = pid_y\n    ow = pid_x\n\n    # top\u2011left corner of the receptive field in the input tensor\n    in_y0 = oh * stride - padding\n    in_x0 = ow * stride - padding\n\n    acc = tl.float32(0.0)\n          ^\nTypeError(\"'dtype' object is not callable\")\n"
       },
       "last_timing": null,
       "best_speedup": 0.18671858692848048,
       "best_code": null,
       "best_turn": 1,
       "no_improve_streak": 0,
-      "terminated": false,
-      "termination_reason": null,
+      "terminated": true,
+      "termination_reason": "k_max_reached",
       "history": [
         {
           "turn": 1,
@@ -3555,6 +4220,139 @@
           "correctness": false,
           "gen_status": "generated",
           "speedup": null
+        },
+        {
+          "turn": 82,
+          "compiled": true,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 83,
+          "compiled": true,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 84,
+          "compiled": true,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 85,
+          "compiled": true,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 86,
+          "compiled": true,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 87,
+          "compiled": true,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 88,
+          "compiled": true,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 89,
+          "compiled": true,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 90,
+          "compiled": true,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 91,
+          "compiled": true,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 92,
+          "compiled": true,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 93,
+          "compiled": true,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 94,
+          "compiled": true,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 95,
+          "compiled": true,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 96,
+          "compiled": true,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 97,
+          "compiled": true,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 98,
+          "compiled": true,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 99,
+          "compiled": true,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 100,
+          "compiled": true,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
         }
       ]
     },
@@ -3566,27 +4364,28 @@
       "model": "openai/gpt-oss-120b",
       "sample_index": 901,
       "original_prompt": "You are given a PyTorch reference implementation of a neural network operator.\nWrite a functionally equivalent GPU kernel in Triton.\n\nRequirements:\n- All tensor inputs and outputs are float16 (fp16). Accumulation precision is\n  your choice unless the reference dictates otherwise.\n- Target GPU: NVIDIA A100 (compute capability 8.0).\n- Your kernel must be a drop-in replacement: same input shapes, same output\n  shapes and dtype as the reference.\n- Output ONLY the complete Triton solution inside a single code block.\n  No explanation outside the code block.\n\nWrite a Triton kernel (triton.jit) with a Python wrapper. Provide the full\nPython file defining ModelNew that calls your Triton kernel.\n\nReference implementation:\n```python\nimport torch\nimport torch.nn as nn\n\nclass Model(nn.Module):\n    \"\"\"\n    Simple model that performs a single square matrix multiplication (C = A * B)\n    \"\"\"\n    def __init__(self):\n        super(Model, self).__init__()\n    \n    def forward(self, A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:\n        \"\"\"\n        Performs the matrix multiplication.\n\n        Args:\n            A (torch.Tensor): Input matrix A of shape (N, N).\n            B (torch.Tensor): Input matrix B of shape (N, N).\n\n        Returns:\n            torch.Tensor: Output matrix C of shape (N, N).\n        \"\"\"\n        return torch.matmul(A, B)\n\nN = 2048 * 2\n\ndef get_inputs():\n    A = torch.rand(N, N)\n    B = torch.rand(N, N)\n    return [A, B]\n\ndef get_init_inputs():\n    return []  # No special initialization inputs needed\n```\n",
-      "turn": 81,
-      "phase": "repair",
-      "code": "# model_new_triton.py\n# ------------------------------------------------------------\n# Triton fp16 GEMM (C = A @ B) optimized for NVIDIA A100 (SM80)\n# ------------------------------------------------------------\nimport torch\nimport torch.nn as nn\nimport triton\nimport triton.language as tl\n\n# ----------------------------------------------------------------------\n# Autotuned GEMM kernel using Tensor Cores\n# ----------------------------------------------------------------------\n@triton.autotune(\n    configs=[\n        # 256x128 blocks, 64 k tile, 4 stages, 8 warps\n        triton.Config(\n            {\"BLOCK_M\": 256, \"BLOCK_N\": 128, \"BLOCK_K\": 64, \"NUM_STAGES\": 4},\n            num_warps=8,\n        ),\n        # 128x256 blocks, 64 k tile, 4 stages, 8 warps\n        triton.Config(\n            {\"BLOCK_M\": 128, \"BLOCK_N\": 256, \"BLOCK_K\": 64, \"NUM_STAGES\": 4},\n            num_warps=8,\n        ),\n        # 128x128 blocks, 64 k tile, 3 stages, 8 warps\n        triton.Config(\n            {\"BLOCK_M\": 128, \"BLOCK_N\": 128, \"BLOCK_K\": 64, \"NUM_STAGES\": 3},\n            num_warps=8,\n        ),\n        # 64x64 blocks, 64 k tile, 2 stages, 4 warps\n        triton.Config(\n            {\"BLOCK_M\": 64, \"BLOCK_N\": 64, \"BLOCK_K\": 64, \"NUM_STAGES\": 2},\n            num_warps=4,\n        ),\n    ],\n    key=[\"M\", \"N\", \"K\"],\n)\n@triton.jit\ndef _gemm_fp16_tensorcore(\n    A,                # *fp16\n    B,                # *fp16\n    C,                # *fp16\n    M, N, K,          # i32\n    stride_am, stride_ak,   # i64\n    stride_bk, stride_bn,   # i64\n    stride_cm, stride_cn,   # i64\n    BLOCK_M: tl.constexpr,\n    BLOCK_N: tl.constexpr,\n    BLOCK_K: tl.constexpr,\n    NUM_STAGES: tl.constexpr,\n):\n    \"\"\"C = A @ B   (fp16 inputs, fp16 output, fp32 accumulation)\"\"\"\n\n    pid_m = tl.program_id(0)\n    pid_n = tl.program_id(1)\n\n    # Compute block offsets\n    offs_m = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)\n    offs_n = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)\n\n    mask_m = offs_m < M\n    mask_n = offs_n < N\n\n    # Pointers for tiles of A and B\n    a_ptrs = A + (offs_m[:, None] * stride_am + tl.arange(0, BLOCK_K)[None, :] * stride_ak)\n    b_ptrs = B + (tl.arange(0, BLOCK_K)[:, None] * stride_bk + offs_n[None, :] * stride_bn)\n\n    # Accumulator in fp32 (Tensor Cores accumulate to fp32)\n    acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)\n\n    # Loop over K dimension with double buffering\n    for k in range(0, K, BLOCK_K):\n        cur_k = tl.minimum(BLOCK_K, K - k)\n\n        a = tl.load(\n            a_ptrs + k * stride_ak,\n            mask=mask_m[:, None] & (tl.arange(0, BLOCK_K) < cur_k)[None, :],\n            other=0.0,\n        )\n        b = tl.load(\n            b_ptrs + k * stride_bk,\n            mask=(tl.arange(0, BLOCK_K)[:, None] < cur_k) & mask_n[None, :],\n            other=0.0,\n        )\n        # fp16\u00d7fp16 \u2192 fp32 using Tensor Cores\n        acc += tl.dot(a, b)\n\n    # Write back\n    c_ptrs = C + (offs_m[:, None] * stride_cm + offs_n[None, :] * stride_cn)\n    tl.store(\n        c_ptrs,\n        acc.to(tl.float16),\n        mask=mask_m[:, None] & mask_n[None, :],\n    )\n\n\n# ----------------------------------------------------------------------\n# PyTorch wrapper\n# ----------------------------------------------------------------------\nclass ModelNew(nn.Module):\n    \"\"\"Drop\u2011in replacement for the reference Model using the Triton GEMM.\"\"\"\n\n    def __init__(self):\n        super().__init__()\n\n    def forward(self, A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:\n        if not (A.is_cuda and B.is_cuda):\n            raise RuntimeError(\"Inputs must be CUDA tensors\")\n        if A.dtype != torch.float16:\n            A = A.to(torch.float16)\n        if B.dtype != torch.float16:\n            B = B.to(torch.float16)\n\n        if A.dim() != 2 or B.dim() != 2:\n            raise RuntimeError(\"Only 2\u2011D matrices are supported\")\n        M, K = A.shape\n        K2, N = B.shape\n        if K != K2:\n            raise RuntimeError(\"Inner dimensions must match for matmul\")\n\n        C = torch.empty((M, N), device=A.device, dtype=torch.float16)\n\n        # 2\u2011D launch grid\n        grid = (triton.cdiv(M, 256), triton.cdiv(N, 256))\n        _gemm_fp16_tensorcore[grid](\n            A,\n            B,\n            C,\n            M,\n            N,\n            K,\n            A.stride(0),\n            A.stride(1),\n            B.stride(0),\n            B.stride(1),\n            C.stride(0),\n            C.stride(1),\n        )\n        return C\n\n\n# ----------------------------------------------------------------------\n# Simple sanity\u2011check (run when executed directly)\n# ----------------------------------------------------------------------\nif __name__ == \"__main__\":\n    torch.manual_seed(0)\n    N = 2048 * 2  # 4096\n    A = torch.rand(N, N, device=\"cuda\", dtype=torch.float16)\n    B = torch.rand(N, N, device=\"cuda\", dtype=torch.float16)\n\n    model = ModelNew().cuda()\n    torch.cuda.synchronize()\n    _ = model(A, B)  # warm\u2011up\n\n    repeats = 20\n    torch.cuda.synchronize()\n    t0 = torch.cuda.Event(enable_timing=True)\n    t1 = torch.cuda.Event(enable_timing=True)\n\n    t0.record()\n    for _ in range(repeats):\n        C_triton = model(A, B)\n    t1.record()\n    torch.cuda.synchronize()\n    triton_time = t0.elapsed_time(t1) / repeats\n\n    t0.record()\n    for _ in range(repeats):\n        C_torch = torch.matmul(A, B)\n    t1.record()\n    torch.cuda.synchronize()\n    torch_time = t0.elapsed_time(t1) / repeats\n\n    max_err = (C_triton - C_torch).abs().max()\n    print(f\"Triton GEMM   : {triton_time:.3f} ms\")\n    print(f\"Torch matmul : {torch_time:.3f} ms\")\n    print(f\"max absolute error: {max_err.item():.6f}\")\n",
+      "turn": 100,
+      "phase": "optimize",
+      "code": "# model_new_triton.py\n# ------------------------------------------------------------\n# Triton FP16 GEMM (C = A @ B) \u2013 simple tiled implementation\n# ------------------------------------------------------------\nimport torch\nimport torch.nn as nn\nimport triton\nimport triton.language as tl\n\n\n@triton.jit\ndef _gemm_fp16_simple(\n    # Pointers\n    A, B, C,\n    # Matrix dimensions\n    M, N, K,\n    # Strides\n    stride_am, stride_ak,\n    stride_bk, stride_bn,\n    stride_cm, stride_cn,\n    # Compile\u2011time tile sizes\n    BLOCK_M: tl.constexpr,\n    BLOCK_N: tl.constexpr,\n    BLOCK_K: tl.constexpr,\n):\n    \"\"\"\n    Na\u00efve tiled GEMM:\n        C[offs_m, offs_n] = sum_k A[offs_m, k] * B[k, offs_n]\n    Accumulation is performed in FP32 for numerical stability,\n    then cast back to FP16 for the output.\n    \"\"\"\n    pid_m = tl.program_id(0)   # row block index\n    pid_n = tl.program_id(1)   # column block index\n\n    # Tile offsets\n    offs_m = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)\n    offs_n = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)\n\n    # OOB masks\n    mask_m = offs_m < M\n    mask_n = offs_n < N\n\n    # Accumulator in FP32\n    acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)\n\n    # Loop over K dimension\n    for k in range(0, K, BLOCK_K):\n        cur_k = tl.minimum(BLOCK_K, K - k)\n        offs_k = k + tl.arange(0, BLOCK_K)\n\n        # Load A tile (BLOCK_M x cur_k)\n        a_ptrs = A + offs_m[:, None] * stride_am + offs_k[None, :] * stride_ak\n        mask_a = mask_m[:, None] & (offs_k[None, :] < K)\n        a = tl.load(a_ptrs, mask=mask_a, other=0.0).to(tl.float16)\n\n        # Load B tile (cur_k x BLOCK_N)\n        b_ptrs = B + offs_k[:, None] * stride_bk + offs_n[None, :] * stride_bn\n        mask_b = (offs_k[:, None] < K) & mask_n[None, :]\n        b = tl.load(b_ptrs, mask=mask_b, other=0.0).to(tl.float16)\n\n        # FP16 \u00d7 FP16 \u2192 FP32 accumulation\n        acc += tl.dot(a, b, out_dtype=tl.float32)\n\n    # Write result back in FP16\n    c_ptrs = C + offs_m[:, None] * stride_cm + offs_n[None, :] * stride_cn\n    mask_c = mask_m[:, None] & mask_n[None, :]\n    tl.store(c_ptrs, acc.to(tl.float16), mask=mask_c)\n\n\nclass ModelNew(nn.Module):\n    \"\"\"Drop\u2011in replacement for the reference Model using a Triton GEMM.\"\"\"\n\n    def __init__(self):\n        super().__init__()\n        # Tile sizes tuned for A100 (SM80)\n        self.BLOCK_M = 64   # rows per block\n        self.BLOCK_N = 64   # cols per block\n        self.BLOCK_K = 32   # reduction tile (multiple of 16)\n\n    def forward(self, A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:\n        if not (A.is_cuda and B.is_cuda):\n            raise RuntimeError(\"Inputs must be CUDA tensors\")\n        # Ensure fp16 and contiguous\n        if A.dtype != torch.float16:\n            A = A.to(torch.float16)\n        if B.dtype != torch.float16:\n            B = B.to(torch.float16)\n        A = A.contiguous()\n        B = B.contiguous()\n\n        if A.dim() != 2 or B.dim() != 2:\n            raise RuntimeError(\"Only 2\u2011D matrices are supported\")\n        M, K = A.shape\n        K2, N = B.shape\n        if K != K2:\n            raise RuntimeError(\"Inner dimensions must match for matmul\")\n\n        C = torch.empty((M, N), device=A.device, dtype=torch.float16)\n\n        grid = (\n            triton.cdiv(M, self.BLOCK_M),\n            triton.cdiv(N, self.BLOCK_N),\n        )\n\n        _gemm_fp16_simple[grid](\n            A,\n            B,\n            C,\n            M,\n            N,\n            K,\n            A.stride(0),\n            A.stride(1),\n            B.stride(0),\n            B.stride(1),\n            C.stride(0),\n            C.stride(1),\n            BLOCK_M=self.BLOCK_M,\n            BLOCK_N=self.BLOCK_N,\n            BLOCK_K=self.BLOCK_K,\n            num_warps=8,\n            num_stages=3,\n        )\n        return C\n\n\n# ------------------------------------------------------------------\n# Simple sanity\u2011check (run when executed directly)\n# ------------------------------------------------------------------\nif __name__ == \"__main__\":\n    torch.manual_seed(0)\n    N = 2048 * 2  # 4096\n    A = torch.rand(N, N, device=\"cuda\", dtype=torch.float16)\n    B = torch.rand(N, N, device=\"cuda\", dtype=torch.float16)\n\n    model = ModelNew().cuda()\n    torch.cuda.synchronize()\n    # Warm\u2011up\n    _ = model(A, B)\n\n    repeats = 10\n    torch.cuda.synchronize()\n    t0 = torch.cuda.Event(enable_timing=True)\n    t1 = torch.cuda.Event(enable_timing=True)\n\n    t0.record()\n    for _ in range(repeats):\n        C_triton = model(A, B)\n    t1.record()\n    torch.cuda.synchronize()\n    triton_time = t0.elapsed_time(t1) / repeats\n\n    t0.record()\n    for _ in range(repeats):\n        C_torch = torch.matmul(A, B)\n    t1.record()\n    torch.cuda.synchronize()\n    torch_time = t0.elapsed_time(t1) / repeats\n\n    max_err = (C_triton - C_torch).abs().max()\n    print(f\"Triton GEMM   : {triton_time:.3f} ms\")\n    print(f\"Torch matmul : {torch_time:.3f} ms\")\n    print(f\"max absolute error: {max_err.item():.6f}\")\n",
       "gen_status": "generated",
       "compiled": true,
-      "correctness": false,
+      "correctness": true,
       "metadata": {
         "hardware": "NVIDIA A100 80GB PCIe",
         "device": "cuda:0",
-        "max_difference": "['1104.000000']",
-        "avg_difference": "['256.000000']",
-        "correctness_issue": "Output mismatch",
-        "correctness_trials": "(0 / 1)"
+        "correctness_trials": "(1 / 1)"
       },
-      "last_timing": null,
+      "last_timing": {
+        "kernel_ms": 1.218559980392456,
+        "baseline_ms": 0.562175989151001,
+        "speedup": 0.46134453633537476
+      },
       "best_speedup": 2.3038792331567386,
       "best_code": null,
       "best_turn": 1,
-      "no_improve_streak": 0,
-      "terminated": false,
-      "termination_reason": null,
+      "no_improve_streak": 1,
+      "terminated": true,
+      "termination_reason": "k_max_reached",
       "history": [
         {
           "turn": 1,
@@ -4153,6 +4952,139 @@
           "correctness": false,
           "gen_status": "generated",
           "speedup": null
+        },
+        {
+          "turn": 82,
+          "compiled": true,
+          "correctness": true,
+          "gen_status": "generated",
+          "speedup": 0.9067103621069078
+        },
+        {
+          "turn": 83,
+          "compiled": true,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 84,
+          "compiled": true,
+          "correctness": true,
+          "gen_status": "generated",
+          "speedup": 0.5353535703933485
+        },
+        {
+          "turn": 85,
+          "compiled": true,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 86,
+          "compiled": true,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 87,
+          "compiled": true,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 88,
+          "compiled": true,
+          "correctness": true,
+          "gen_status": "generated",
+          "speedup": 2.072519195476776
+        },
+        {
+          "turn": 89,
+          "compiled": true,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 90,
+          "compiled": true,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 91,
+          "compiled": true,
+          "correctness": true,
+          "gen_status": "generated",
+          "speedup": 0.9504273213426547
+        },
+        {
+          "turn": 92,
+          "compiled": true,
+          "correctness": true,
+          "gen_status": "generated",
+          "speedup": 0.8305597075844491
+        },
+        {
+          "turn": 93,
+          "compiled": true,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 94,
+          "compiled": true,
+          "correctness": true,
+          "gen_status": "generated",
+          "speedup": 0.7021005963265667
+        },
+        {
+          "turn": 95,
+          "compiled": true,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 96,
+          "compiled": true,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 97,
+          "compiled": true,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 98,
+          "compiled": true,
+          "correctness": true,
+          "gen_status": "generated",
+          "speedup": 0.746905085884322
+        },
+        {
+          "turn": 99,
+          "compiled": true,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 100,
+          "compiled": true,
+          "correctness": true,
+          "gen_status": "generated",
+          "speedup": 0.46134453633537476
         }
       ]
     },
@@ -4164,7 +5096,7 @@
       "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
       "sample_index": 902,
       "original_prompt": "You are given a PyTorch reference implementation of a neural network operator.\nWrite a functionally equivalent GPU kernel in Triton.\n\nRequirements:\n- All tensor inputs and outputs are float16 (fp16). Accumulation precision is\n  your choice unless the reference dictates otherwise.\n- Target GPU: NVIDIA A100 (compute capability 8.0).\n- Your kernel must be a drop-in replacement: same input shapes, same output\n  shapes and dtype as the reference.\n- Output ONLY the complete Triton solution inside a single code block.\n  No explanation outside the code block.\n\nWrite a Triton kernel (triton.jit) with a Python wrapper. Provide the full\nPython file defining ModelNew that calls your Triton kernel.\n\nReference implementation:\n```python\nimport torch\nimport torch.nn as nn\n\nclass Model(nn.Module):\n    \"\"\"\n    Simple model that performs a single square matrix multiplication (C = A * B)\n    \"\"\"\n    def __init__(self):\n        super(Model, self).__init__()\n    \n    def forward(self, A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:\n        \"\"\"\n        Performs the matrix multiplication.\n\n        Args:\n            A (torch.Tensor): Input matrix A of shape (N, N).\n            B (torch.Tensor): Input matrix B of shape (N, N).\n\n        Returns:\n            torch.Tensor: Output matrix C of shape (N, N).\n        \"\"\"\n        return torch.matmul(A, B)\n\nN = 2048 * 2\n\ndef get_inputs():\n    A = torch.rand(N, N)\n    B = torch.rand(N, N)\n    return [A, B]\n\ndef get_init_inputs():\n    return []  # No special initialization inputs needed\n```\n",
-      "turn": 81,
+      "turn": 100,
       "phase": "repair",
       "code": "import torch\nimport triton\nimport triton.language as tl\n\n@triton.jit\ndef matmul_kernel(\n    # Pointers to matrices\n    a_ptr, b_ptr, c_ptr,\n    # Matrix dimensions\n    M, N, K,\n    # The stride variables represent how much to increase the ptr by when moving by 1\n    # element in a particular dimension\n    stride_am, stride_ak,\n    stride_bk, stride_bn,\n    stride_cm, stride_cn,\n    # Meta-parameters\n    BLOCK_SIZE_M: tl.constexpr,\n    BLOCK_SIZE_N: tl.constexpr,\n    BLOCK_SIZE_K: tl.constexpr,\n    GROUP_SIZE_M: tl.constexpr,\n):\n    \"\"\"\n    Matrix multiplication kernel using Triton\n    \"\"\"\n    # Get the thread index\n    pid = tl.program_id(axis=0)\n    num_pid_m = tl.cdiv(M, BLOCK_SIZE_M)\n    num_pid_n = tl.cdiv(N, BLOCK_SIZE_N)\n    num_pid_in_group = GROUP_SIZE_M * num_pid_n\n    group_id = pid // num_pid_in_group\n    first_pid_m = group_id * GROUP_SIZE_M\n    group_size_m = min(num_pid_m - first_pid_m, GROUP_SIZE_M)\n    pid_m = first_pid_m + (pid % group_size_m)\n    pid_n = (pid % num_pid_in_group) // group_size_m\n\n    # Create pointers for the first blocks of A and B\n    offs_am = pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)\n    offs_bn = pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)\n    offs_k = tl.arange(0, BLOCK_SIZE_K)\n    a_ptrs = a_ptr + (offs_am[:, None] * stride_am + offs_k[None, :] * stride_ak)\n    b_ptrs = b_ptr + (offs_k[:, None] * stride_bk + offs_bn[None, :] * stride_bn)\n\n    # Initialize accumulator with zero\n    accumulator = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.float32)\n\n    # Loop over k dimension\n    for k in range(0, K, BLOCK_SIZE_K):\n        # Load tiles from global memory\n        a = tl.load(a_ptrs, mask=offs_k[None, :] < K - k, other=0.0)\n        b = tl.load(b_ptrs, mask=offs_k[:, None] < K - k, other=0.0)\n        # Perform matrix multiplication\n        accumulator += tl.dot(a, b)\n        # Advance pointers\n        a_ptrs += BLOCK_SIZE_K * stride_ak\n        b_ptrs += BLOCK_SIZE_K * stride_bk\n\n    # Write back result\n    offs_cm = pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)\n    offs_cn = pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)\n    c_ptrs = c_ptr + (offs_cm[:, None] * stride_cm + offs_cn[None, :] * stride_cn)\n    c_mask = (offs_cm[:, None] < M) & (offs_cn[None, :] < N)\n    tl.store(c_ptrs, accumulator, mask=c_mask)\n\n\nclass ModelNew(torch.nn.Module):\n    def __init__(self):\n        super(ModelNew, self).__init__()\n\n    def forward(self, A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:\n        \"\"\"\n        Performs the matrix multiplication using Triton kernel.\n\n        Args:\n            A (torch.Tensor): Input matrix A of shape (N, N).\n            B (torch.Tensor): Input matrix B of shape (N, N).\n\n        Returns:\n            torch.Tensor: Output matrix C of shape (N, N).\n        \"\"\"\n        # Ensure inputs are contiguous and on the correct device\n        A = A.contiguous().to(torch.float16)\n        B = B.contiguous().to(torch.float16)\n        \n        # Get dimensions\n        M, K = A.shape\n        K, N = B.shape\n        \n        # Create output tensor\n        C = torch.empty(M, N, dtype=torch.float16, device=A.device)\n        \n        # Define block sizes\n        BLOCK_SIZE_M = 128\n        BLOCK_SIZE_N = 128\n        BLOCK_SIZE_K = 64\n        GROUP_SIZE_M = 8\n        \n        # Calculate grid size\n        grid = lambda META: (\n            triton.cdiv(M, META['BLOCK_SIZE_M']) * triton.cdiv(N, META['BLOCK_SIZE_N']),\n        )\n        \n        # Launch kernel\n        matmul_kernel[grid](\n            A.data_ptr(), B.data_ptr(), C.data_ptr(),\n            M, N, K,\n            A.stride(0), A.stride(1),\n            B.stride(0), B.stride(1),\n            C.stride(0), C.stride(1),\n            BLOCK_SIZE_M=BLOCK_SIZE_M,\n            BLOCK_SIZE_N=BLOCK_SIZE_N,\n            BLOCK_SIZE_K=BLOCK_SIZE_K,\n            GROUP_SIZE_M=GROUP_SIZE_M\n        )\n        \n        return C\n\n\n# Test function\ndef get_inputs():\n    N = 2048 * 2\n    A = torch.rand(N, N, dtype=torch.float16)\n    B = torch.rand(N, N, dtype=torch.float16)\n    return [A, B]\n\ndef get_init_inputs():\n    return []\n",
       "gen_status": "generated",
@@ -4175,15 +5107,15 @@
         "device": "cuda:0",
         "runtime_error": "at 44:12:\n    offs_bn = pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)\n    offs_k = tl.arange(0, BLOCK_SIZE_K)\n    a_ptrs = a_ptr + (offs_am[:, None] * stride_am + offs_k[None, :] * stride_ak)\n ...",
         "runtime_error_name": "triton.compiler.errors.CompilationError",
-        "runtime_error_traceback": "Traceback (most recent call last):\n  File \"/home/jun/kernel-lang-2x2/kernel_exp/.venv/lib/python3.10/site-packages/triton/language/core.py\", line 35, in wrapper\n    return fn(*args, **kwargs)\n  File \"/home/jun/kernel-lang-2x2/kernel_exp/.venv/lib/python3.10/site-packages/triton/language/core.py\", line 1597, in load\n    return semantic.load(pointer, mask, other, boundary_check, padding_option, cache_modifier, eviction_policy,\n  File \"/home/jun/kernel-lang-2x2/kernel_exp/.venv/lib/python3.10/site-packages/triton/language/semantic.py\", line 1037, in load\n    return _load_legacy(ptr, mask, other, boundary_check, padding, cache, eviction, is_volatile, builder)\n  File \"/home/jun/kernel-lang-2x2/kernel_exp/.venv/lib/python3.10/site-packages/triton/language/semantic.py\", line 969, in _load_legacy\n    raise ValueError(f\"Unsupported ptr type {ptr.type.__repr__()} in `tl.load`\")\nValueError: Unsupported ptr type <[128, 64], int64> in `tl.load`\n\nThe above exception was the direct cause of the following exception:\n\nTraceback (most recent call last):\n  File \"/home/jun/kernel-lang-2x2/kernel_exp/third_party/KernelBench/src/kernelbench/eval.py\", line 782, in run_and_check_correctness\n    output_new = model_new(*inputs)\n  File \"/home/jun/kernel-lang-2x2/kernel_exp/.venv/lib/python3.10/site-packages/torch/nn/modules/module.py\", line 1736, in _wrapped_call_impl\n    return self._call_impl(*args, **kwargs)\n  File \"/home/jun/kernel-lang-2x2/kernel_exp/.venv/lib/python3.10/site-packages/torch/nn/modules/module.py\", line 1747, in _call_impl\n    return forward_call(*args, **kwargs)\n  File \"/tmp/tmp9v5blilb.py\", line 103, in forward\n    matmul_kernel[grid](\n  File \"/home/jun/kernel-lang-2x2/kernel_exp/.venv/lib/python3.10/site-packages/triton/runtime/jit.py\", line 345, in <lambda>\n    return lambda *args, **kwargs: self.run(grid=grid, warmup=False, *args, **kwargs)\n  File \"/home/jun/kernel-lang-2x2/kernel_exp/.venv/lib/python3.10/site-packages/triton/runtime/jit.py\", line 662, in run\n    kernel = self.compile(\n  File \"/home/jun/kernel-lang-2x2/kernel_exp/.venv/lib/python3.10/site-packages/triton/compiler/compiler.py\", line 276, in compile\n    module = src.make_ir(options, codegen_fns, context)\n  File \"/home/jun/kernel-lang-2x2/kernel_exp/.venv/lib/python3.10/site-packages/triton/compiler/compiler.py\", line 113, in make_ir\n    return ast_to_ttir(self.fn, self, context=context, options=options, codegen_fns=codegen_fns)\ntriton.compiler.errors.CompilationError: at 44:12:\n    offs_bn = pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)\n    offs_k = tl.arange(0, BLOCK_SIZE_K)\n    a_ptrs = a_ptr + (offs_am[:, None] * stride_am + offs_k[None, :] * stride_ak)\n    b_ptrs = b_ptr + (offs_k[:, None] * stride_bk + offs_bn[None, :] * stride_bn)\n\n    # Initialize accumulator with zero\n    accumulator = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.float32)\n\n    # Loop over k dimension\n    for k in range(0, K, BLOCK_SIZE_K):\n        # Load tiles from global memory\n        a = tl.load(a_ptrs, mask=offs_k[None, :] < K - k, other=0.0)\n            ^\n"
+        "runtime_error_traceback": "Traceback (most recent call last):\n  File \"/home/jun/kernel-lang-2x2/kernel_exp/.venv/lib/python3.10/site-packages/triton/language/core.py\", line 35, in wrapper\n    return fn(*args, **kwargs)\n  File \"/home/jun/kernel-lang-2x2/kernel_exp/.venv/lib/python3.10/site-packages/triton/language/core.py\", line 1597, in load\n    return semantic.load(pointer, mask, other, boundary_check, padding_option, cache_modifier, eviction_policy,\n  File \"/home/jun/kernel-lang-2x2/kernel_exp/.venv/lib/python3.10/site-packages/triton/language/semantic.py\", line 1037, in load\n    return _load_legacy(ptr, mask, other, boundary_check, padding, cache, eviction, is_volatile, builder)\n  File \"/home/jun/kernel-lang-2x2/kernel_exp/.venv/lib/python3.10/site-packages/triton/language/semantic.py\", line 969, in _load_legacy\n    raise ValueError(f\"Unsupported ptr type {ptr.type.__repr__()} in `tl.load`\")\nValueError: Unsupported ptr type <[128, 64], int64> in `tl.load`\n\nThe above exception was the direct cause of the following exception:\n\nTraceback (most recent call last):\n  File \"/home/jun/kernel-lang-2x2/kernel_exp/third_party/KernelBench/src/kernelbench/eval.py\", line 782, in run_and_check_correctness\n    output_new = model_new(*inputs)\n  File \"/home/jun/kernel-lang-2x2/kernel_exp/.venv/lib/python3.10/site-packages/torch/nn/modules/module.py\", line 1736, in _wrapped_call_impl\n    return self._call_impl(*args, **kwargs)\n  File \"/home/jun/kernel-lang-2x2/kernel_exp/.venv/lib/python3.10/site-packages/torch/nn/modules/module.py\", line 1747, in _call_impl\n    return forward_call(*args, **kwargs)\n  File \"/tmp/tmpxm4swrea.py\", line 103, in forward\n    matmul_kernel[grid](\n  File \"/home/jun/kernel-lang-2x2/kernel_exp/.venv/lib/python3.10/site-packages/triton/runtime/jit.py\", line 345, in <lambda>\n    return lambda *args, **kwargs: self.run(grid=grid, warmup=False, *args, **kwargs)\n  File \"/home/jun/kernel-lang-2x2/kernel_exp/.venv/lib/python3.10/site-packages/triton/runtime/jit.py\", line 662, in run\n    kernel = self.compile(\n  File \"/home/jun/kernel-lang-2x2/kernel_exp/.venv/lib/python3.10/site-packages/triton/compiler/compiler.py\", line 276, in compile\n    module = src.make_ir(options, codegen_fns, context)\n  File \"/home/jun/kernel-lang-2x2/kernel_exp/.venv/lib/python3.10/site-packages/triton/compiler/compiler.py\", line 113, in make_ir\n    return ast_to_ttir(self.fn, self, context=context, options=options, codegen_fns=codegen_fns)\ntriton.compiler.errors.CompilationError: at 44:12:\n    offs_bn = pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)\n    offs_k = tl.arange(0, BLOCK_SIZE_K)\n    a_ptrs = a_ptr + (offs_am[:, None] * stride_am + offs_k[None, :] * stride_ak)\n    b_ptrs = b_ptr + (offs_k[:, None] * stride_bk + offs_bn[None, :] * stride_bn)\n\n    # Initialize accumulator with zero\n    accumulator = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.float32)\n\n    # Loop over k dimension\n    for k in range(0, K, BLOCK_SIZE_K):\n        # Load tiles from global memory\n        a = tl.load(a_ptrs, mask=offs_k[None, :] < K - k, other=0.0)\n            ^\n"
       },
       "last_timing": null,
       "best_speedup": 0.9619469216182842,
       "best_code": null,
       "best_turn": 1,
       "no_improve_streak": 0,
-      "terminated": false,
-      "termination_reason": null,
+      "terminated": true,
+      "termination_reason": "k_max_reached",
       "history": [
         {
           "turn": 1,
@@ -4746,6 +5678,139 @@
         },
         {
           "turn": 81,
+          "compiled": true,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 82,
+          "compiled": true,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 83,
+          "compiled": true,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 84,
+          "compiled": true,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 85,
+          "compiled": true,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 86,
+          "compiled": true,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 87,
+          "compiled": true,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 88,
+          "compiled": true,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 89,
+          "compiled": true,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 90,
+          "compiled": true,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 91,
+          "compiled": true,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 92,
+          "compiled": true,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 93,
+          "compiled": true,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 94,
+          "compiled": true,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 95,
+          "compiled": true,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 96,
+          "compiled": true,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 97,
+          "compiled": true,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 98,
+          "compiled": true,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 99,
+          "compiled": true,
+          "correctness": false,
+          "gen_status": "generated",
+          "speedup": null
+        },
+        {
+          "turn": 100,
           "compiled": true,
           "correctness": false,
           "gen_status": "generated",
