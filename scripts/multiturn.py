@@ -577,6 +577,22 @@ def _geomean(values):
     return float(np.exp(np.mean(np.log(arr))))
 
 
+def _turn_speedup(chain, h):
+    """A history entry's speedup for a turn, if it was correct and timed.
+    cmd_init's turn-1 history entries never got a "speedup" key at all
+    (unlike cmd_evaluate's turn>=2 entries, which always include it, even
+    as None) -- turn 1's own timing, when it succeeded, only lives on the
+    chain's best_speedup/best_turn fields (backfilled from
+    results/eval/timing_20260820.json). best_turn==1 uniquely identifies
+    "turn 1's own timing succeeded and became the (necessarily first-ever)
+    best", so best_speedup IS turn 1's speedup in that case. Same fix as
+    scripts/analyze.py's fig2_speedup_rows() (2026-08-24) -- keep both in
+    sync since PRIMARY(b) below and fig2_speedup.csv are meant to agree."""
+    if h["turn"] == 1 and "speedup" not in h:
+        return chain["best_speedup"] if chain.get("best_turn") == 1 else None
+    return h.get("speedup")
+
+
 def cmd_report(args):
     import collections
     import numpy as np
@@ -641,8 +657,8 @@ def cmd_report(args):
             group = [c for c in chains if c["language"] == lang and c["model"].split("/")[-1] == model]
             best_so_far = []
             for c in group:
-                vals = [h["speedup"] for h in c["history"]
-                        if h["turn"] <= t and h["correctness"] and h.get("speedup") is not None]
+                vals = [_turn_speedup(c, h) for h in c["history"] if h["turn"] <= t and h["correctness"]]
+                vals = [v for v in vals if v is not None]
                 if vals:
                     best_so_far.append(max(vals))
             if best_so_far:

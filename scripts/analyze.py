@@ -237,6 +237,22 @@ def fig1_ever_correct_rows(state, hardware="sm_120"):
     return rows
 
 
+def _turn_speedup(chain, h):
+    """A history entry's speedup for a turn, if it was correct and timed.
+    cmd_init's turn-1 history entries (scripts/multiturn.py) never got a
+    "speedup" key at all (unlike cmd_evaluate's turn>=2 entries, which
+    always include it, even as None) -- turn 1's own timing, when it
+    succeeded, only lives on the chain's best_speedup/best_turn fields
+    (backfilled from results/eval/timing_20260820.json). best_turn==1
+    uniquely identifies "turn 1's own timing succeeded and became the
+    (necessarily first-ever) best", so best_speedup IS turn 1's speedup in
+    that case. Found 2026-08-24 (fig2_speedup.csv had zero turn-1 rows
+    despite plenty of turn-1-correct-and-timed chains existing)."""
+    if h["turn"] == 1 and "speedup" not in h:
+        return chain["best_speedup"] if chain.get("best_turn") == 1 else None
+    return h.get("speedup")
+
+
 def fig2_speedup_rows(state, hardware="sm_120"):
     """paper/figures_data/fig2_speedup.csv rows -- see PI spec in
     paper/FINAL_DELIVERABLES.md #1. Turn-loop (in-chain) best-so-far
@@ -252,8 +268,8 @@ def fig2_speedup_rows(state, hardware="sm_120"):
             group = [c for c in chains if c["language"] == lang and c["model"].split("/")[-1] == model]
             best_so_far = []
             for c in group:
-                vals = [h["speedup"] for h in c["history"]
-                        if h["turn"] <= t and h["correctness"] and h.get("speedup") is not None]
+                vals = [_turn_speedup(c, h) for h in c["history"] if h["turn"] <= t and h["correctness"]]
+                vals = [v for v in vals if v is not None]
                 if vals:
                     best_so_far.append(max(vals))
             if best_so_far:
