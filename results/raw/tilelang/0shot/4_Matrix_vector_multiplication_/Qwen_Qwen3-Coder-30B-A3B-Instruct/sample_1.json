@@ -1,0 +1,39 @@
+{
+  "task": "4_Matrix_vector_multiplication_",
+  "task_family": "matmul",
+  "language": "tilelang",
+  "condition": "0shot",
+  "sample_index": 1,
+  "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+  "base_url": "http://localhost:8001/v1",
+  "hf_revision": "b2cff646eb4bb1d68355c01b18ae02e7cf42d120",
+  "vllm_version": "0.10.1",
+  "tensor_parallel_size": 1,
+  "temperature": 0.8,
+  "max_tokens": 8192,
+  "seed": 43001,
+  "timestamp": "2026-08-26T00:19:21+0900",
+  "prompt_sha256": "5f68b7be09213bdb190b59670148e93ef57f36fa7053bdf90d4e52893affacbf",
+  "prompt": "You are given a PyTorch reference implementation of a neural network operator.\nWrite a functionally equivalent GPU kernel in TileLang.\n\nRequirements:\n- All tensor inputs and outputs are float16 (fp16). Accumulation precision is\n  your choice unless the reference dictates otherwise.\n- Target GPU: NVIDIA RTX PRO 6000 Blackwell (compute capability 12.0).\n- Your kernel must be a drop-in replacement: same input shapes, same output\n  shapes and dtype as the reference.\n- Output ONLY the complete TileLang solution inside a single code block.\n  No explanation outside the code block.\n\nWrite a TileLang kernel (tilelang.jit / T.prim_func). Provide the full\nPython file defining ModelNew that calls your TileLang kernel.\n\nReference implementation:\n```python\nimport torch\nimport torch.nn as nn\n\nclass Model(nn.Module):\n    \"\"\"\n    Simple model that performs matrix-vector multiplication (C = A * B).\n    \"\"\"\n    def __init__(self):\n        super(Model, self).__init__()\n    \n    def forward(self, A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:\n        \"\"\"\n        Performs matrix-vector multiplication.\n\n        Args:\n            A: Input matrix of shape (M, K).\n            B: Input vector of shape (K, 1).\n\n        Returns:\n            Output vector of shape (M, 1).\n        \"\"\"\n        return torch.matmul(A, B)\n\nM = 256 * 8 # 2048\nK = 131072 * 8 # 1048576\n\ndef get_inputs():\n    A = torch.rand(M, K)\n    B = torch.rand(K, 1)\n    return [A, B]\n\ndef get_init_inputs():\n    return []  # No special initialization inputs needed\n```\n",
+  "env": {
+    "torch_version": "2.5.1+cu121",
+    "cuda_version": "12.1",
+    "gpu_name": "NVIDIA A100 80GB PCIe",
+    "compute_capability": [
+      8,
+      0
+    ],
+    "driver_version": "535.309.01\n535.309.01"
+  },
+  "response_raw": "```python\nimport torch\nimport tilelang as T\nfrom tilelang.jit import tilelang_jit\n\nclass ModelNew(torch.nn.Module):\n    def __init__(self):\n        super(ModelNew, self).__init__()\n        \n    def forward(self, A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:\n        return matmul_kernel(A, B)\n\n@tilelang_jit\ndef matmul_kernel(\n    A: T.Ptr[T.float16], \n    B: T.Ptr[T.float16], \n    C: T.Ptr[T.float16],\n    M: T.int32,\n    K: T.int32,\n    N: T.int32\n):\n    T.func_attr({\"global_symbol\": \"matmul_kernel\", \"tir.noalias\": True})\n    \n    with T.block(\"root\"):\n        tx = T.thread_binding(0, T.ceildiv(M * N, 128), thread=\"threadIdx.x\")\n        ty = T.thread_binding(0, T.ceildiv(K, 32), thread=\"threadIdx.y\")\n        \n        A_shared = T.alloc_shared([32, 32], dtype=\"float16\")\n        B_shared = T.alloc_shared([32, 32], dtype=\"float16\")\n        C_local = T.alloc_local([32, 32], dtype=\"float32\")\n        \n        C_local[...] = 0.0\n        \n        for k in T.serial(T.ceildiv(K, 32)):\n            # Load A into shared memory\n            for i in T.serial(32):\n                for j in T.serial(32):\n                    if (ty * 32 + i < M) and (k * 32 + j < K):\n                        A_shared[i, j] = A[(ty * 32 + i) * K + (k * 32 + j)]\n                    else:\n                        A_shared[i, j] = 0.0\n            \n            # Load B into shared memory\n            for i in T.serial(32):\n                for j in T.serial(32):\n                    if (k * 32 + i < K) and (tx * 32 + j < N):\n                        B_shared[i, j] = B[(k * 32 + i) * N + (tx * 32 + j)]\n                    else:\n                        B_shared[i, j] = 0.0\n            \n            # Compute partial dot product\n            for i in T.serial(32):\n                for j in T.serial(32):\n                    for l in T.serial(32):\n                        C_local[i, j] += T.cast(A_shared[i, l], \"float32\") * T.cast(B_shared[l, j], \"float32\")\n            \n        # Store result to global memory\n        for i in T.serial(32):\n            for j in T.serial(32):\n                if (tx * 32 + j < N) and (ty * 32 + i < M):\n                    C[(ty * 32 + i) * N + (tx * 32 + j)] = T.cast(C_local[i, j], \"float16\")\n\nM = 256 * 8  # 2048\nK = 131072 * 8  # 1048576\nN = 1\n\ndef get_inputs():\n    A = torch.rand(M, K, dtype=torch.float16)\n    B = torch.rand(K, N, dtype=torch.float16)\n    return [A, B]\n\ndef get_init_inputs():\n    return []\n```",
+  "response_finish_reason": "stop",
+  "usage": {
+    "completion_tokens": 771,
+    "prompt_tokens": 388,
+    "total_tokens": 1159,
+    "completion_tokens_details": null,
+    "prompt_tokens_details": null
+  },
+  "parsed_code": "import torch\nimport tilelang as T\nfrom tilelang.jit import tilelang_jit\n\nclass ModelNew(torch.nn.Module):\n    def __init__(self):\n        super(ModelNew, self).__init__()\n        \n    def forward(self, A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:\n        return matmul_kernel(A, B)\n\n@tilelang_jit\ndef matmul_kernel(\n    A: T.Ptr[T.float16], \n    B: T.Ptr[T.float16], \n    C: T.Ptr[T.float16],\n    M: T.int32,\n    K: T.int32,\n    N: T.int32\n):\n    T.func_attr({\"global_symbol\": \"matmul_kernel\", \"tir.noalias\": True})\n    \n    with T.block(\"root\"):\n        tx = T.thread_binding(0, T.ceildiv(M * N, 128), thread=\"threadIdx.x\")\n        ty = T.thread_binding(0, T.ceildiv(K, 32), thread=\"threadIdx.y\")\n        \n        A_shared = T.alloc_shared([32, 32], dtype=\"float16\")\n        B_shared = T.alloc_shared([32, 32], dtype=\"float16\")\n        C_local = T.alloc_local([32, 32], dtype=\"float32\")\n        \n        C_local[...] = 0.0\n        \n        for k in T.serial(T.ceildiv(K, 32)):\n            # Load A into shared memory\n            for i in T.serial(32):\n                for j in T.serial(32):\n                    if (ty * 32 + i < M) and (k * 32 + j < K):\n                        A_shared[i, j] = A[(ty * 32 + i) * K + (k * 32 + j)]\n                    else:\n                        A_shared[i, j] = 0.0\n            \n            # Load B into shared memory\n            for i in T.serial(32):\n                for j in T.serial(32):\n                    if (k * 32 + i < K) and (tx * 32 + j < N):\n                        B_shared[i, j] = B[(k * 32 + i) * N + (tx * 32 + j)]\n                    else:\n                        B_shared[i, j] = 0.0\n            \n            # Compute partial dot product\n            for i in T.serial(32):\n                for j in T.serial(32):\n                    for l in T.serial(32):\n                        C_local[i, j] += T.cast(A_shared[i, l], \"float32\") * T.cast(B_shared[l, j], \"float32\")\n            \n        # Store result to global memory\n        for i in T.serial(32):\n            for j in T.serial(32):\n                if (tx * 32 + j < N) and (ty * 32 + i < M):\n                    C[(ty * 32 + i) * N + (tx * 32 + j)] = T.cast(C_local[i, j], \"float16\")\n\nM = 256 * 8  # 2048\nK = 131072 * 8  # 1048576\nN = 1\n\ndef get_inputs():\n    A = torch.rand(M, K, dtype=torch.float16)\n    B = torch.rand(K, N, dtype=torch.float16)\n    return [A, B]\n\ndef get_init_inputs():\n    return []\n",
+  "status": "generated"
+}

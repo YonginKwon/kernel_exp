@@ -1,0 +1,39 @@
+{
+  "task": "51_Argmax_over_a_dimension",
+  "task_family": "reduction",
+  "language": "tilelang",
+  "condition": "0shot",
+  "sample_index": 2,
+  "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+  "base_url": "http://localhost:8001/v1",
+  "hf_revision": "b2cff646eb4bb1d68355c01b18ae02e7cf42d120",
+  "vllm_version": "0.10.1",
+  "tensor_parallel_size": 1,
+  "temperature": 0.8,
+  "max_tokens": 8192,
+  "seed": 43002,
+  "timestamp": "2026-08-26T00:22:25+0900",
+  "prompt_sha256": "c547a225573f5121102079c28d7c1259b3954d46b5ef55622e71f48fe1928a82",
+  "prompt": "You are given a PyTorch reference implementation of a neural network operator.\nWrite a functionally equivalent GPU kernel in TileLang.\n\nRequirements:\n- All tensor inputs and outputs are float16 (fp16). Accumulation precision is\n  your choice unless the reference dictates otherwise.\n- Target GPU: NVIDIA RTX PRO 6000 Blackwell (compute capability 12.0).\n- Your kernel must be a drop-in replacement: same input shapes, same output\n  shapes and dtype as the reference.\n- Output ONLY the complete TileLang solution inside a single code block.\n  No explanation outside the code block.\n\nWrite a TileLang kernel (tilelang.jit / T.prim_func). Provide the full\nPython file defining ModelNew that calls your TileLang kernel.\n\nReference implementation:\n```python\nimport torch\nimport torch.nn as nn\n\nclass Model(nn.Module):\n    \"\"\"\n    Simple model that performs Argmax over a specified dimension.\n    \"\"\"\n    def __init__(self, dim: int):\n        \"\"\"\n        Initializes the model with the dimension to perform argmax.\n\n        Args:\n            dim (int): The dimension to perform argmax over.\n        \"\"\"\n        super(Model, self).__init__()\n        self.dim = dim\n\n    def forward(self, x: torch.Tensor) -> torch.Tensor:\n        \"\"\"\n        Applies argmax over the specified dimension to the input tensor.\n\n        Args:\n            x (torch.Tensor): Input tensor.\n\n        Returns:\n            torch.Tensor: Output tensor with argmax applied, with the specified dimension removed.\n        \"\"\"\n        return torch.argmax(x, dim=self.dim)\n\nbatch_size = 128\ndim1 = 4096\ndim2 = 4095\n\ndef get_inputs():\n    x = torch.rand(batch_size, dim1, dim2)\n    return [x]\n\ndef get_init_inputs():\n    return [1]\n```\n",
+  "env": {
+    "torch_version": "2.5.1+cu121",
+    "cuda_version": "12.1",
+    "gpu_name": "NVIDIA A100 80GB PCIe",
+    "compute_capability": [
+      8,
+      0
+    ],
+    "driver_version": "535.309.01\n535.309.01"
+  },
+  "response_raw": "```python\nimport torch\nimport tilelang as T\nimport numpy as np\n\n@T.prim_func\ndef argmax_kernel(\n    A: T.Buffer((128, 4096, 4095), \"float16\"),\n    B: T.Buffer((128, 4096), \"int32\")\n):\n    # Define the reduction dimension\n    T.func_attr({\"global_symbol\": \"argmax_kernel\"})\n    \n    # Loop over batch and dim1 dimensions\n    for i in T.serial(128):\n        for j in T.serial(4096):\n            # Initialize max value and index\n            max_val = T.float16(-65504.0)  # Minimum representable float16 value\n            max_idx = T.int32(0)\n            \n            # Reduce over dim2 dimension\n            for k in T.serial(4095):\n                a_val = A[i, j, k]\n                # Update max if current value is greater\n                if a_val > max_val:\n                    max_val = a_val\n                    max_idx = k\n            \n            # Store result\n            B[i, j] = max_idx\n\nclass ModelNew(torch.nn.Module):\n    def __init__(self, dim: int):\n        super(ModelNew, self).__init__()\n        self.dim = dim\n        \n    def forward(self, x: torch.Tensor) -> torch.Tensor:\n        # Allocate output tensor\n        output_shape = list(x.shape)\n        output_shape.pop(self.dim)\n        output = torch.empty(output_shape, dtype=torch.int32, device=x.device)\n        \n        # Create TileLang kernel\n        func = argmax_kernel\n        \n        # Execute kernel\n        func(x, output)\n        \n        return output\n\n# Test function\ndef get_inputs():\n    x = torch.rand(128, 4096, 4095, dtype=torch.float16)\n    return [x]\n\ndef get_init_inputs():\n    return [1]\n```",
+  "response_finish_reason": "stop",
+  "usage": {
+    "completion_tokens": 425,
+    "prompt_tokens": 395,
+    "total_tokens": 820,
+    "completion_tokens_details": null,
+    "prompt_tokens_details": null
+  },
+  "parsed_code": "import torch\nimport tilelang as T\nimport numpy as np\n\n@T.prim_func\ndef argmax_kernel(\n    A: T.Buffer((128, 4096, 4095), \"float16\"),\n    B: T.Buffer((128, 4096), \"int32\")\n):\n    # Define the reduction dimension\n    T.func_attr({\"global_symbol\": \"argmax_kernel\"})\n    \n    # Loop over batch and dim1 dimensions\n    for i in T.serial(128):\n        for j in T.serial(4096):\n            # Initialize max value and index\n            max_val = T.float16(-65504.0)  # Minimum representable float16 value\n            max_idx = T.int32(0)\n            \n            # Reduce over dim2 dimension\n            for k in T.serial(4095):\n                a_val = A[i, j, k]\n                # Update max if current value is greater\n                if a_val > max_val:\n                    max_val = a_val\n                    max_idx = k\n            \n            # Store result\n            B[i, j] = max_idx\n\nclass ModelNew(torch.nn.Module):\n    def __init__(self, dim: int):\n        super(ModelNew, self).__init__()\n        self.dim = dim\n        \n    def forward(self, x: torch.Tensor) -> torch.Tensor:\n        # Allocate output tensor\n        output_shape = list(x.shape)\n        output_shape.pop(self.dim)\n        output = torch.empty(output_shape, dtype=torch.int32, device=x.device)\n        \n        # Create TileLang kernel\n        func = argmax_kernel\n        \n        # Execute kernel\n        func(x, output)\n        \n        return output\n\n# Test function\ndef get_inputs():\n    x = torch.rand(128, 4096, 4095, dtype=torch.float16)\n    return [x]\n\ndef get_init_inputs():\n    return [1]\n",
+  "status": "generated"
+}

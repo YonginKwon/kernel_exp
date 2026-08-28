@@ -1,0 +1,39 @@
+{
+  "task": "90_cumprod",
+  "task_family": "cumulative_scan",
+  "language": "tilelang",
+  "condition": "0shot",
+  "sample_index": 0,
+  "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+  "base_url": "http://localhost:8001/v1",
+  "hf_revision": "b2cff646eb4bb1d68355c01b18ae02e7cf42d120",
+  "vllm_version": "0.10.1",
+  "tensor_parallel_size": 1,
+  "temperature": 0.8,
+  "max_tokens": 8192,
+  "seed": 43000,
+  "timestamp": "2026-08-26T00:24:02+0900",
+  "prompt_sha256": "1fb71473d0f1d412a5f3e49c69fc3ed2d96263b0d112d30aa9b3316cfc33a741",
+  "prompt": "You are given a PyTorch reference implementation of a neural network operator.\nWrite a functionally equivalent GPU kernel in TileLang.\n\nRequirements:\n- All tensor inputs and outputs are float16 (fp16). Accumulation precision is\n  your choice unless the reference dictates otherwise.\n- Target GPU: NVIDIA RTX PRO 6000 Blackwell (compute capability 12.0).\n- Your kernel must be a drop-in replacement: same input shapes, same output\n  shapes and dtype as the reference.\n- Output ONLY the complete TileLang solution inside a single code block.\n  No explanation outside the code block.\n\nWrite a TileLang kernel (tilelang.jit / T.prim_func). Provide the full\nPython file defining ModelNew that calls your TileLang kernel.\n\nReference implementation:\n```python\nimport torch\nimport torch.nn as nn\n\nclass Model(nn.Module):\n    \"\"\"\n    A model that performs a cumulative product operation along a specified dimension.\n\n    Parameters:\n        dim (int): The dimension along which to perform the cumulative product operation.\n    \"\"\"\n\n    def __init__(self, dim):\n        \"\"\"\n        Initialize the CumulativeProductModel.\n\n        Args:\n            dim (int): The dimension along which to perform the cumulative product.\n        \"\"\"\n        super(Model, self).__init__()\n        self.dim = dim\n\n    def forward(self, x):\n        \"\"\"\n        Forward pass, computing the cumulative product along the specified dimension.\n\n        Args:\n            x (torch.Tensor): Input tensor of shape (batch_size, *input_shape).\n\n        Returns:\n            torch.Tensor: Tensor of the same shape as `x` after applying cumulative product along `dim`.\n        \"\"\"\n        return torch.cumprod(x, dim=self.dim)\n\n# Define input dimensions and parameters\nbatch_size = 32768\ninput_shape = (32768,)\ndim = 1\n\ndef get_inputs():\n    return [torch.rand(batch_size, *input_shape)]\n\ndef get_init_inputs():\n    return [dim]\n\n```\n",
+  "env": {
+    "torch_version": "2.5.1+cu121",
+    "cuda_version": "12.1",
+    "gpu_name": "NVIDIA A100 80GB PCIe",
+    "compute_capability": [
+      8,
+      0
+    ],
+    "driver_version": "535.309.01\n535.309.01"
+  },
+  "response_raw": "```python\nimport torch\nimport tilelang as T\nfrom tilelang.jit import compile\nimport numpy as np\n\n@compile\ndef cumprod_kernel(\n    x: T.Ptr[T.float16], \n    output: T.Ptr[T.float16],\n    size: T.int32,\n    dim_size: T.int32,\n    stride: T.int32,\n    accum_dtype=T.float32\n):\n    T.func_attr({\"global_symbol\": \"cumprod_kernel\"})\n    \n    # Shared memory for partial results\n    shared_mem = T.alloc_shared([dim_size], T.float16)\n    \n    # Each thread block handles one batch element\n    batch_id = T.launch_item(0)\n    \n    if batch_id < size // dim_size:\n        # Load data into shared memory\n        for i in T.serial(dim_size):\n            shared_mem[i] = x[batch_id * dim_size + i]\n        \n        # Compute cumulative product from left to right\n        for i in T.serial(1, dim_size):\n            shared_mem[i] = shared_mem[i - 1] * shared_mem[i]\n        \n        # Store result back to global memory\n        for i in T.serial(dim_size):\n            output[batch_id * dim_size + i] = shared_mem[i]\n\nclass ModelNew(torch.nn.Module):\n    def __init__(self, dim):\n        super(ModelNew, self).__init__()\n        self.dim = dim\n\n    def forward(self, x):\n        # Reshape input for processing\n        original_shape = x.shape\n        batch_size = 1\n        dim_size = 1\n        \n        # Calculate total elements and dim size based on dim parameter\n        for i in range(len(original_shape)):\n            if i == self.dim:\n                dim_size = original_shape[i]\n            else:\n                batch_size *= original_shape[i]\n        \n        # Flatten to 2D for kernel processing\n        x_flat = x.view(batch_size, dim_size)\n        \n        # Allocate output tensor\n        output = torch.empty_like(x_flat, dtype=torch.float16)\n        \n        # Prepare arguments for kernel\n        size = batch_size * dim_size\n        stride = dim_size\n        \n        # Call the compiled kernel\n        cumprod_kernel(x_flat, output, size, dim_size, stride)\n        \n        # Reshape back to original shape\n        return output.view(original_shape)\n\n# Test the implementation\ndef get_inputs():\n    return [torch.rand(32768, 32768, dtype=torch.float16)]\n\ndef get_init_inputs():\n    return [1]\n```",
+  "response_finish_reason": "stop",
+  "usage": {
+    "completion_tokens": 537,
+    "prompt_tokens": 418,
+    "total_tokens": 955,
+    "completion_tokens_details": null,
+    "prompt_tokens_details": null
+  },
+  "parsed_code": "import torch\nimport tilelang as T\nfrom tilelang.jit import compile\nimport numpy as np\n\n@compile\ndef cumprod_kernel(\n    x: T.Ptr[T.float16], \n    output: T.Ptr[T.float16],\n    size: T.int32,\n    dim_size: T.int32,\n    stride: T.int32,\n    accum_dtype=T.float32\n):\n    T.func_attr({\"global_symbol\": \"cumprod_kernel\"})\n    \n    # Shared memory for partial results\n    shared_mem = T.alloc_shared([dim_size], T.float16)\n    \n    # Each thread block handles one batch element\n    batch_id = T.launch_item(0)\n    \n    if batch_id < size // dim_size:\n        # Load data into shared memory\n        for i in T.serial(dim_size):\n            shared_mem[i] = x[batch_id * dim_size + i]\n        \n        # Compute cumulative product from left to right\n        for i in T.serial(1, dim_size):\n            shared_mem[i] = shared_mem[i - 1] * shared_mem[i]\n        \n        # Store result back to global memory\n        for i in T.serial(dim_size):\n            output[batch_id * dim_size + i] = shared_mem[i]\n\nclass ModelNew(torch.nn.Module):\n    def __init__(self, dim):\n        super(ModelNew, self).__init__()\n        self.dim = dim\n\n    def forward(self, x):\n        # Reshape input for processing\n        original_shape = x.shape\n        batch_size = 1\n        dim_size = 1\n        \n        # Calculate total elements and dim size based on dim parameter\n        for i in range(len(original_shape)):\n            if i == self.dim:\n                dim_size = original_shape[i]\n            else:\n                batch_size *= original_shape[i]\n        \n        # Flatten to 2D for kernel processing\n        x_flat = x.view(batch_size, dim_size)\n        \n        # Allocate output tensor\n        output = torch.empty_like(x_flat, dtype=torch.float16)\n        \n        # Prepare arguments for kernel\n        size = batch_size * dim_size\n        stride = dim_size\n        \n        # Call the compiled kernel\n        cumprod_kernel(x_flat, output, size, dim_size, stride)\n        \n        # Reshape back to original shape\n        return output.view(original_shape)\n\n# Test the implementation\ndef get_inputs():\n    return [torch.rand(32768, 32768, dtype=torch.float16)]\n\ndef get_init_inputs():\n    return [1]\n",
+  "status": "generated"
+}

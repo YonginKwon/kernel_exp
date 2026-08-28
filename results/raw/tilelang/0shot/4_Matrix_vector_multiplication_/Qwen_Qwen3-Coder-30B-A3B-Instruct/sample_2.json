@@ -1,0 +1,39 @@
+{
+  "task": "4_Matrix_vector_multiplication_",
+  "task_family": "matmul",
+  "language": "tilelang",
+  "condition": "0shot",
+  "sample_index": 2,
+  "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+  "base_url": "http://localhost:8001/v1",
+  "hf_revision": "b2cff646eb4bb1d68355c01b18ae02e7cf42d120",
+  "vllm_version": "0.10.1",
+  "tensor_parallel_size": 1,
+  "temperature": 0.8,
+  "max_tokens": 8192,
+  "seed": 43002,
+  "timestamp": "2026-08-26T00:19:23+0900",
+  "prompt_sha256": "5f68b7be09213bdb190b59670148e93ef57f36fa7053bdf90d4e52893affacbf",
+  "prompt": "You are given a PyTorch reference implementation of a neural network operator.\nWrite a functionally equivalent GPU kernel in TileLang.\n\nRequirements:\n- All tensor inputs and outputs are float16 (fp16). Accumulation precision is\n  your choice unless the reference dictates otherwise.\n- Target GPU: NVIDIA RTX PRO 6000 Blackwell (compute capability 12.0).\n- Your kernel must be a drop-in replacement: same input shapes, same output\n  shapes and dtype as the reference.\n- Output ONLY the complete TileLang solution inside a single code block.\n  No explanation outside the code block.\n\nWrite a TileLang kernel (tilelang.jit / T.prim_func). Provide the full\nPython file defining ModelNew that calls your TileLang kernel.\n\nReference implementation:\n```python\nimport torch\nimport torch.nn as nn\n\nclass Model(nn.Module):\n    \"\"\"\n    Simple model that performs matrix-vector multiplication (C = A * B).\n    \"\"\"\n    def __init__(self):\n        super(Model, self).__init__()\n    \n    def forward(self, A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:\n        \"\"\"\n        Performs matrix-vector multiplication.\n\n        Args:\n            A: Input matrix of shape (M, K).\n            B: Input vector of shape (K, 1).\n\n        Returns:\n            Output vector of shape (M, 1).\n        \"\"\"\n        return torch.matmul(A, B)\n\nM = 256 * 8 # 2048\nK = 131072 * 8 # 1048576\n\ndef get_inputs():\n    A = torch.rand(M, K)\n    B = torch.rand(K, 1)\n    return [A, B]\n\ndef get_init_inputs():\n    return []  # No special initialization inputs needed\n```\n",
+  "env": {
+    "torch_version": "2.5.1+cu121",
+    "cuda_version": "12.1",
+    "gpu_name": "NVIDIA A100 80GB PCIe",
+    "compute_capability": [
+      8,
+      0
+    ],
+    "driver_version": "535.309.01\n535.309.01"
+  },
+  "response_raw": "```python\nimport torch\nimport tilelang as T\nfrom tilelang.jit import prim_func\n\n@prim_func\ndef matmul_kernel(\n    A: T.Buffer((2048, 1048576), \"float16\"),\n    B: T.Buffer((1048576, 1), \"float16\"),\n    C: T.Buffer((2048, 1), \"float16\")\n):\n    T.func_attr({\"global_symbol\": \"matmul_kernel\"})\n    \n    # Define thread indices\n    i = T.thread_binding(0, 2048, \"blockIdx.x\")\n    j = T.thread_binding(0, 1, \"blockIdx.y\")\n    k = T.thread_binding(0, 1048576, \"threadIdx.x\")\n    \n    # Shared memory for B\n    shared_B = T.alloc_shared((1048576, 1), \"float16\")\n    \n    # Load B into shared memory\n    if k < 1048576:\n        shared_B[k, 0] = B[k, 0]\n    \n    T.evaluate(T.mbarrier_wait(T.handle_cast(\"handle\", T.uint64(0)), 0))\n    \n    # Compute partial dot product\n    acc = T.alloc_local((1,), \"float32\")\n    acc[0] = 0.0\n    \n    # Loop over K dimension\n    for k_inner in range(1048576):\n        acc[0] += T.cast(A[i, k_inner], \"float32\") * T.cast(shared_B[k_inner, 0], \"float32\")\n    \n    # Store result\n    C[i, 0] = T.cast(acc[0], \"float16\")\n\nclass ModelNew(torch.nn.Module):\n    def __init__(self):\n        super(ModelNew, self).__init__()\n        \n    def forward(self, A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:\n        # Create output tensor\n        C = torch.empty(A.shape[0], B.shape[1], dtype=torch.float16, device=A.device)\n        \n        # Launch kernel\n        matmul_kernel[A, B, C]()\n        \n        return C\n\n# Test the implementation\nif __name__ == \"__main__\":\n    M = 2048\n    K = 1048576\n    \n    # Generate test inputs\n    A = torch.rand(M, K, dtype=torch.float16, device='cuda')\n    B = torch.rand(K, 1, dtype=torch.float16, device='cuda')\n    \n    # Create model instance\n    model = ModelNew().to('cuda')\n    \n    # Run inference\n    with torch.no_grad():\n        output = model(A, B)\n    \n    print(f\"Input A shape: {A.shape}\")\n    print(f\"Input B shape: {B.shape}\")\n    print(f\"Output shape: {output.shape}\")\n    print(\"Kernel execution completed successfully.\")\n```",
+  "response_finish_reason": "stop",
+  "usage": {
+    "completion_tokens": 643,
+    "prompt_tokens": 388,
+    "total_tokens": 1031,
+    "completion_tokens_details": null,
+    "prompt_tokens_details": null
+  },
+  "parsed_code": "import torch\nimport tilelang as T\nfrom tilelang.jit import prim_func\n\n@prim_func\ndef matmul_kernel(\n    A: T.Buffer((2048, 1048576), \"float16\"),\n    B: T.Buffer((1048576, 1), \"float16\"),\n    C: T.Buffer((2048, 1), \"float16\")\n):\n    T.func_attr({\"global_symbol\": \"matmul_kernel\"})\n    \n    # Define thread indices\n    i = T.thread_binding(0, 2048, \"blockIdx.x\")\n    j = T.thread_binding(0, 1, \"blockIdx.y\")\n    k = T.thread_binding(0, 1048576, \"threadIdx.x\")\n    \n    # Shared memory for B\n    shared_B = T.alloc_shared((1048576, 1), \"float16\")\n    \n    # Load B into shared memory\n    if k < 1048576:\n        shared_B[k, 0] = B[k, 0]\n    \n    T.evaluate(T.mbarrier_wait(T.handle_cast(\"handle\", T.uint64(0)), 0))\n    \n    # Compute partial dot product\n    acc = T.alloc_local((1,), \"float32\")\n    acc[0] = 0.0\n    \n    # Loop over K dimension\n    for k_inner in range(1048576):\n        acc[0] += T.cast(A[i, k_inner], \"float32\") * T.cast(shared_B[k_inner, 0], \"float32\")\n    \n    # Store result\n    C[i, 0] = T.cast(acc[0], \"float16\")\n\nclass ModelNew(torch.nn.Module):\n    def __init__(self):\n        super(ModelNew, self).__init__()\n        \n    def forward(self, A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:\n        # Create output tensor\n        C = torch.empty(A.shape[0], B.shape[1], dtype=torch.float16, device=A.device)\n        \n        # Launch kernel\n        matmul_kernel[A, B, C]()\n        \n        return C\n\n# Test the implementation\nif __name__ == \"__main__\":\n    M = 2048\n    K = 1048576\n    \n    # Generate test inputs\n    A = torch.rand(M, K, dtype=torch.float16, device='cuda')\n    B = torch.rand(K, 1, dtype=torch.float16, device='cuda')\n    \n    # Create model instance\n    model = ModelNew().to('cuda')\n    \n    # Run inference\n    with torch.no_grad():\n        output = model(A, B)\n    \n    print(f\"Input A shape: {A.shape}\")\n    print(f\"Input B shape: {B.shape}\")\n    print(f\"Output shape: {output.shape}\")\n    print(\"Kernel execution completed successfully.\")\n",
+  "status": "generated"
+}

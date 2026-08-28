@@ -1,0 +1,39 @@
+{
+  "task": "6_Matmul_with_large_K_dimension_",
+  "task_family": "matmul",
+  "language": "tilelang",
+  "condition": "0shot",
+  "sample_index": 2,
+  "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+  "base_url": "http://localhost:8001/v1",
+  "hf_revision": "b2cff646eb4bb1d68355c01b18ae02e7cf42d120",
+  "vllm_version": "0.10.1",
+  "tensor_parallel_size": 1,
+  "temperature": 0.8,
+  "max_tokens": 8192,
+  "seed": 43002,
+  "timestamp": "2026-08-26T00:19:29+0900",
+  "prompt_sha256": "aa1a9ad6bfe1a563c5f35a8fc536f5305778a96afb2108c637fbf5fcb3f8f146",
+  "prompt": "You are given a PyTorch reference implementation of a neural network operator.\nWrite a functionally equivalent GPU kernel in TileLang.\n\nRequirements:\n- All tensor inputs and outputs are float16 (fp16). Accumulation precision is\n  your choice unless the reference dictates otherwise.\n- Target GPU: NVIDIA RTX PRO 6000 Blackwell (compute capability 12.0).\n- Your kernel must be a drop-in replacement: same input shapes, same output\n  shapes and dtype as the reference.\n- Output ONLY the complete TileLang solution inside a single code block.\n  No explanation outside the code block.\n\nWrite a TileLang kernel (tilelang.jit / T.prim_func). Provide the full\nPython file defining ModelNew that calls your TileLang kernel.\n\nReference implementation:\n```python\nimport torch\nimport torch.nn as nn\n\nclass Model(nn.Module):\n    \"\"\"\n    Simple model that performs a single matrix multiplication (C = A * B) with a large K dimension\n    \"\"\"\n    def __init__(self):\n        super(Model, self).__init__()\n    \n    def forward(self, A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:\n        \"\"\"\n        Performs matrix multiplication of A and B.\n\n        Args:\n            A: Input tensor of shape (M, K)\n            B: Input tensor of shape (K, N)\n\n        Returns:\n            Output tensor of shape (M, N)\n        \"\"\"\n        return torch.matmul(A, B)\n\nM = 256\nN = 256\nK = 131072 * 4\n\ndef get_inputs():\n    A = torch.rand(M, K)\n    B = torch.rand(K, N)\n    return [A, B]\n\ndef get_init_inputs():\n    return []  # No special initialization inputs needed\n```\n",
+  "env": {
+    "torch_version": "2.5.1+cu121",
+    "cuda_version": "12.1",
+    "gpu_name": "NVIDIA A100 80GB PCIe",
+    "compute_capability": [
+      8,
+      0
+    ],
+    "driver_version": "535.309.01\n535.309.01"
+  },
+  "response_raw": "```python\nimport torch\nimport tilelang as T\nimport numpy as np\n\n# Define the TileLang kernel for matrix multiplication\n@T.prim_func\ndef matmul_kernel(\n    A: T.Buffer((256, 131072 * 4), \"float16\"),\n    B: T.Buffer((131072 * 4, 256), \"float16\"),\n    C: T.Buffer((256, 256), \"float16\")\n):\n    # Define thread indices\n    tx = T.thread_binding(0, 32, \"threadIdx.x\")\n    ty = T.thread_binding(0, 32, \"threadIdx.y\")\n    bx = T.thread_binding(0, 8, \"blockIdx.x\")\n    by = T.thread_binding(0, 8, \"blockIdx.y\")\n    \n    # Shared memory for tiles\n    shared_A = T.alloc_shared((32, 1024), \"float16\")\n    shared_B = T.alloc_shared((1024, 32), \"float16\")\n    \n    # Initialize accumulator\n    acc = T.alloc_local((32, 32), \"float32\")\n    \n    # Initialize accumulator to zero\n    for i in range(32):\n        for j in range(32):\n            acc[i, j] = 0.0\n    \n    # Loop over tiles\n    for tile_idx in range(131072 * 4 // 1024):\n        # Load tile of A into shared memory\n        for i in range(32):\n            for k in range(1024):\n                shared_A[i, k] = A[bx * 32 + i, tile_idx * 1024 + k]\n        \n        # Load tile of B into shared memory\n        for k in range(1024):\n            for j in range(32):\n                shared_B[k, j] = B[tile_idx * 1024 + k, by * 32 + j]\n        \n        # Synchronize threads\n        T.evaluate(T.call_extern(\"syncwarp\", \"\"))\n        \n        # Compute partial dot product\n        for k in range(1024):\n            for i in range(32):\n                for j in range(32):\n                    acc[i, j] += T.cast(shared_A[i, k], \"float32\") * T.cast(shared_B[k, j], \"float32\")\n        \n        # Synchronize threads\n        T.evaluate(T.call_extern(\"syncwarp\", \"\"))\n    \n    # Write result to global memory\n    for i in range(32):\n        for j in range(32):\n            C[bx * 32 + i, by * 32 + j] = T.cast(acc[i, j], \"float16\")\n\nclass ModelNew(torch.nn.Module):\n    def __init__(self):\n        super(ModelNew, self).__init__()\n        \n    def forward(self, A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:\n        # Create output tensor\n        C = torch.empty(256, 256, dtype=torch.float16, device=A.device)\n        \n        # Launch kernel\n        matmul_kernel(A, B, C)\n        \n        return C\n\n# Test function\ndef get_inputs():\n    A = torch.rand(256, 131072 * 4, dtype=torch.float16)\n    B = torch.rand(131072 * 4, 256, dtype=torch.float16)\n    return [A, B]\n\ndef get_init_inputs():\n    return []\n```",
+  "response_finish_reason": "stop",
+  "usage": {
+    "completion_tokens": 794,
+    "prompt_tokens": 384,
+    "total_tokens": 1178,
+    "completion_tokens_details": null,
+    "prompt_tokens_details": null
+  },
+  "parsed_code": "import torch\nimport tilelang as T\nimport numpy as np\n\n# Define the TileLang kernel for matrix multiplication\n@T.prim_func\ndef matmul_kernel(\n    A: T.Buffer((256, 131072 * 4), \"float16\"),\n    B: T.Buffer((131072 * 4, 256), \"float16\"),\n    C: T.Buffer((256, 256), \"float16\")\n):\n    # Define thread indices\n    tx = T.thread_binding(0, 32, \"threadIdx.x\")\n    ty = T.thread_binding(0, 32, \"threadIdx.y\")\n    bx = T.thread_binding(0, 8, \"blockIdx.x\")\n    by = T.thread_binding(0, 8, \"blockIdx.y\")\n    \n    # Shared memory for tiles\n    shared_A = T.alloc_shared((32, 1024), \"float16\")\n    shared_B = T.alloc_shared((1024, 32), \"float16\")\n    \n    # Initialize accumulator\n    acc = T.alloc_local((32, 32), \"float32\")\n    \n    # Initialize accumulator to zero\n    for i in range(32):\n        for j in range(32):\n            acc[i, j] = 0.0\n    \n    # Loop over tiles\n    for tile_idx in range(131072 * 4 // 1024):\n        # Load tile of A into shared memory\n        for i in range(32):\n            for k in range(1024):\n                shared_A[i, k] = A[bx * 32 + i, tile_idx * 1024 + k]\n        \n        # Load tile of B into shared memory\n        for k in range(1024):\n            for j in range(32):\n                shared_B[k, j] = B[tile_idx * 1024 + k, by * 32 + j]\n        \n        # Synchronize threads\n        T.evaluate(T.call_extern(\"syncwarp\", \"\"))\n        \n        # Compute partial dot product\n        for k in range(1024):\n            for i in range(32):\n                for j in range(32):\n                    acc[i, j] += T.cast(shared_A[i, k], \"float32\") * T.cast(shared_B[k, j], \"float32\")\n        \n        # Synchronize threads\n        T.evaluate(T.call_extern(\"syncwarp\", \"\"))\n    \n    # Write result to global memory\n    for i in range(32):\n        for j in range(32):\n            C[bx * 32 + i, by * 32 + j] = T.cast(acc[i, j], \"float16\")\n\nclass ModelNew(torch.nn.Module):\n    def __init__(self):\n        super(ModelNew, self).__init__()\n        \n    def forward(self, A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:\n        # Create output tensor\n        C = torch.empty(256, 256, dtype=torch.float16, device=A.device)\n        \n        # Launch kernel\n        matmul_kernel(A, B, C)\n        \n        return C\n\n# Test function\ndef get_inputs():\n    A = torch.rand(256, 131072 * 4, dtype=torch.float16)\n    B = torch.rand(131072 * 4, 256, dtype=torch.float16)\n    return [A, B]\n\ndef get_init_inputs():\n    return []\n",
+  "status": "generated"
+}

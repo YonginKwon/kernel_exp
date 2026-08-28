@@ -1,0 +1,618 @@
+[20260826T025320] === multiturn_run_a100_expand.sh starting, max_turns=10 ===
+[20260826T025320] --- driving cycle 1 ---
+[expand-cycle 20260826T025320] starting gptoss serve
+[expand-cycle 20260826T025320] gptoss healthy, generating (tilelang then docinject)
+[expand-cycle 20260826T025320] gptoss generate done, stopping serve
+[expand-cycle 20260826T025320] starting qwen serve
+[expand-cycle 20260826T025320] qwen healthy, generating (tilelang then docinject)
+[expand-cycle 20260826T025320] qwen generate done, stopping serve
+[expand-cycle 20260826T025320] GPU exclusivity check + evaluate tilelang
+[expand-cycle 20260826T025320] evaluate docinject
+[expand-cycle 20260826T025320] report tilelang:
+total chains: 320
+
+turn lang      model                            n correct terminated
+   1 tilelang  gpt-oss-120b                     1       1          0
+   2 tilelang  Qwen3-Coder-30B-A3B-Instruct   160       7          0
+   2 tilelang  gpt-oss-120b                   159      23          0
+
+termination reasons: {}
+
+chains with a best-so-far correct kernel: 31/320, best_speedup geomean: 0.94x
+[expand-cycle 20260826T025320] report docinject:
+total chains: 680
+
+turn lang      model                            n correct terminated
+   1 cuda      gpt-oss-120b                    42      42          0
+   1 tilelang  Qwen3-Coder-30B-A3B-Instruct    17      17          0
+   1 tilelang  gpt-oss-120b                    29      29          0
+   1 triton    Qwen3-Coder-30B-A3B-Instruct    10      10          0
+   1 triton    gpt-oss-120b                    22      22          0
+   2 cuda      Qwen3-Coder-30B-A3B-Instruct    85       6          0
+   2 cuda      gpt-oss-120b                    43      18          0
+   2 ptx       Qwen3-Coder-30B-A3B-Instruct    85       0          0
+   2 ptx       gpt-oss-120b                    85       0          0
+   2 tilelang  Qwen3-Coder-30B-A3B-Instruct    68       1          0
+   2 tilelang  gpt-oss-120b                    56      11          0
+   2 triton    Qwen3-Coder-30B-A3B-Instruct    75       0          0
+   2 triton    gpt-oss-120b                    63       4          0
+
+termination reasons: {}
+
+chains with a best-so-far correct kernel: 153/680, best_speedup geomean: 0.322x
+[expand-cycle 20260826T025320] cycle complete
+[20260826T075341] pushing checkpoint (turn ~1) to results-a100-phase2-expand
+fatal: pathspec 'scripts/phase2_expand_*.py' did not match any files
+[20260826T075341] nothing new to commit at this checkpoint
+remote: 
+remote: Create a pull request for 'results-a100-phase2-expand' on GitHub by visiting:        
+remote:      https://github.com/YonginKwon/kernel_exp/pull/new/results-a100-phase2-expand        
+remote: 
+To https://github.com/YonginKwon/kernel_exp.git
+ * [new branch]      HEAD -> results-a100-phase2-expand
+/home/jun/kernel-lang-2x2/kernel_exp/results/eval/multiturn_state_a100_tilelang.json: 0/320 terminated
+/home/jun/kernel-lang-2x2/kernel_exp/results/eval/multiturn_state_a100_docinject.json: 0/680 terminated
+[20260826T075343] --- driving cycle 2 ---
+[expand-cycle 20260826T075343] starting gptoss serve
+[expand-cycle 20260826T075343] gptoss healthy, generating (tilelang then docinject)
+[expand-cycle 20260826T075343] gptoss generate done, stopping serve
+[expand-cycle 20260826T075343] starting qwen serve
+[expand-cycle 20260826T075343] qwen healthy, generating (tilelang then docinject)
+[expand-cycle 20260826T075343] qwen generate done, stopping serve
+[expand-cycle 20260826T075343] GPU exclusivity check + evaluate tilelang
+[expand-cycle 20260826T075343] evaluate docinject
+[expand-cycle 20260826T075343] report tilelang:
+total chains: 320
+
+turn lang      model                            n correct terminated
+   2 tilelang  gpt-oss-120b                     1       1          0
+   3 tilelang  Qwen3-Coder-30B-A3B-Instruct   160       0          0
+   3 tilelang  gpt-oss-120b                   159      16          0
+
+termination reasons: {}
+
+chains with a best-so-far correct kernel: 35/320, best_speedup geomean: 0.969x
+[expand-cycle 20260826T075343] report docinject:
+total chains: 680
+
+turn lang      model                            n correct terminated
+   1 tilelang  gpt-oss-120b                     2       2          0
+   2 cuda      gpt-oss-120b                    46      31          0
+   2 tilelang  Qwen3-Coder-30B-A3B-Instruct    17      16          0
+   2 tilelang  gpt-oss-120b                    28      23          0
+   2 triton    Qwen3-Coder-30B-A3B-Instruct    10       9          0
+   2 triton    gpt-oss-120b                    22       9          0
+   3 cuda      Qwen3-Coder-30B-A3B-Instruct    85      10          0
+   3 cuda      gpt-oss-120b                    39      11          0
+   3 ptx       Qwen3-Coder-30B-A3B-Instruct    85       0          0
+   3 ptx       gpt-oss-120b                    85       0          0
+   3 tilelang  Qwen3-Coder-30B-A3B-Instruct    68       1          0
+   3 tilelang  gpt-oss-120b                    55      12          0
+   3 triton    Qwen3-Coder-30B-A3B-Instruct    75       1          0
+   3 triton    gpt-oss-120b                    63       4          0
+
+termination reasons: {}
+
+chains with a best-so-far correct kernel: 175/680, best_speedup geomean: 0.41x
+[expand-cycle 20260826T075343] cycle complete
+[20260826T124303] pushing checkpoint (turn ~2) to results-a100-phase2-expand
+fatal: pathspec 'scripts/phase2_expand_*.py' did not match any files
+[20260826T124303] nothing new to commit at this checkpoint
+Everything up-to-date
+/home/jun/kernel-lang-2x2/kernel_exp/results/eval/multiturn_state_a100_tilelang.json: 0/320 terminated
+/home/jun/kernel-lang-2x2/kernel_exp/results/eval/multiturn_state_a100_docinject.json: 0/680 terminated
+[20260826T124304] --- driving cycle 3 ---
+[expand-cycle 20260826T124304] starting gptoss serve
+[expand-cycle 20260826T124304] gptoss healthy, generating (tilelang then docinject)
+[expand-cycle 20260826T124304] gptoss generate done, stopping serve
+[expand-cycle 20260826T124304] starting qwen serve
+[expand-cycle 20260826T124304] qwen healthy, generating (tilelang then docinject)
+[expand-cycle 20260826T124304] qwen generate done, stopping serve
+[expand-cycle 20260826T124304] GPU exclusivity check + evaluate tilelang
+[expand-cycle 20260826T124304] evaluate docinject
+[expand-cycle 20260826T124304] report tilelang:
+total chains: 320
+
+turn lang      model                            n correct terminated
+   3 tilelang  gpt-oss-120b                     1       1          0
+   4 tilelang  Qwen3-Coder-30B-A3B-Instruct   160       1          0
+   4 tilelang  gpt-oss-120b                   159      22          0
+
+termination reasons: {}
+
+chains with a best-so-far correct kernel: 40/320, best_speedup geomean: 0.867x
+[expand-cycle 20260826T124304] report docinject:
+total chains: 680
+
+turn lang      model                            n correct terminated
+   1 tilelang  gpt-oss-120b                     2       2          0
+   2 cuda      gpt-oss-120b                     4       4          0
+   2 tilelang  gpt-oss-120b                     1       1          0
+   3 cuda      gpt-oss-120b                    42      28          0
+   3 tilelang  Qwen3-Coder-30B-A3B-Instruct    17      15          0
+   3 tilelang  gpt-oss-120b                    27      24          0
+   3 triton    Qwen3-Coder-30B-A3B-Instruct    10       8          0
+   3 triton    gpt-oss-120b                    22      10          0
+   4 cuda      Qwen3-Coder-30B-A3B-Instruct    85      10          0
+   4 cuda      gpt-oss-120b                    39      13          0
+   4 ptx       Qwen3-Coder-30B-A3B-Instruct    85       0          0
+   4 ptx       gpt-oss-120b                    85       0          0
+   4 tilelang  Qwen3-Coder-30B-A3B-Instruct    68       0          0
+   4 tilelang  gpt-oss-120b                    55      14          0
+   4 triton    Qwen3-Coder-30B-A3B-Instruct    75       1          0
+   4 triton    gpt-oss-120b                    63       3          0
+
+termination reasons: {}
+
+chains with a best-so-far correct kernel: 191/680, best_speedup geomean: 0.442x
+[expand-cycle 20260826T124304] cycle complete
+[20260826T174823] pushing checkpoint (turn ~3) to results-a100-phase2-expand
+fatal: pathspec 'scripts/phase2_expand_*.py' did not match any files
+[20260826T174823] nothing new to commit at this checkpoint
+Everything up-to-date
+/home/jun/kernel-lang-2x2/kernel_exp/results/eval/multiturn_state_a100_tilelang.json: 0/320 terminated
+/home/jun/kernel-lang-2x2/kernel_exp/results/eval/multiturn_state_a100_docinject.json: 0/680 terminated
+[20260826T174824] --- driving cycle 4 ---
+[expand-cycle 20260826T174824] starting gptoss serve
+[expand-cycle 20260826T174824] gptoss healthy, generating (tilelang then docinject)
+[expand-cycle 20260826T174824] gptoss generate done, stopping serve
+[expand-cycle 20260826T174824] starting qwen serve
+[expand-cycle 20260826T174824] qwen healthy, generating (tilelang then docinject)
+[expand-cycle 20260826T174824] qwen generate done, stopping serve
+[expand-cycle 20260826T174824] GPU exclusivity check + evaluate tilelang
+[expand-cycle 20260826T174824] evaluate docinject
+[expand-cycle 20260826T174824] report tilelang:
+total chains: 320
+
+turn lang      model                            n correct terminated
+   4 tilelang  gpt-oss-120b                     1       1          0
+   5 tilelang  Qwen3-Coder-30B-A3B-Instruct   160       0          0
+   5 tilelang  gpt-oss-120b                   159      26          3
+
+termination reasons: {'no_improvement_3_turns': 3}
+
+chains with a best-so-far correct kernel: 46/320, best_speedup geomean: 0.863x
+[expand-cycle 20260826T174824] report docinject:
+total chains: 680
+
+turn lang      model                            n correct terminated
+   1 tilelang  gpt-oss-120b                     2       2          0
+   2 cuda      gpt-oss-120b                     4       4          0
+   2 tilelang  gpt-oss-120b                     1       1          0
+   4 cuda      gpt-oss-120b                    43      25          1
+   4 tilelang  Qwen3-Coder-30B-A3B-Instruct    17      15          9
+   4 tilelang  gpt-oss-120b                    27      19          3
+   4 triton    Qwen3-Coder-30B-A3B-Instruct    10       8          6
+   4 triton    gpt-oss-120b                    22       8          0
+   5 cuda      Qwen3-Coder-30B-A3B-Instruct    85      13          0
+   5 cuda      gpt-oss-120b                    38      13          0
+   5 ptx       Qwen3-Coder-30B-A3B-Instruct    85       0          0
+   5 ptx       gpt-oss-120b                    85       0          0
+   5 tilelang  Qwen3-Coder-30B-A3B-Instruct    68       0          0
+   5 tilelang  gpt-oss-120b                    55      15          1
+   5 triton    Qwen3-Coder-30B-A3B-Instruct    75       0          0
+   5 triton    gpt-oss-120b                    63       5          0
+
+termination reasons: {'no_improvement_3_turns': 20}
+
+chains with a best-so-far correct kernel: 196/680, best_speedup geomean: 0.473x
+[expand-cycle 20260826T174824] cycle complete
+[20260826T223724] pushing checkpoint (turn ~4) to results-a100-phase2-expand
+fatal: pathspec 'scripts/phase2_expand_*.py' did not match any files
+[20260826T223724] nothing new to commit at this checkpoint
+Everything up-to-date
+/home/jun/kernel-lang-2x2/kernel_exp/results/eval/multiturn_state_a100_tilelang.json: 3/320 terminated
+/home/jun/kernel-lang-2x2/kernel_exp/results/eval/multiturn_state_a100_docinject.json: 20/680 terminated
+[20260826T223725] --- driving cycle 5 ---
+[expand-cycle 20260826T223725] starting gptoss serve
+[expand-cycle 20260826T223725] gptoss healthy, generating (tilelang then docinject)
+[expand-cycle 20260826T223725] gptoss generate done, stopping serve
+[expand-cycle 20260826T223725] starting qwen serve
+[expand-cycle 20260826T223725] qwen healthy, generating (tilelang then docinject)
+[expand-cycle 20260826T223725] qwen generate done, stopping serve
+[expand-cycle 20260826T223725] GPU exclusivity check + evaluate tilelang
+[expand-cycle 20260826T223725] evaluate docinject
+[expand-cycle 20260826T223725] report tilelang:
+total chains: 320
+
+turn lang      model                            n correct terminated
+   5 tilelang  gpt-oss-120b                     4       3          3
+   6 tilelang  Qwen3-Coder-30B-A3B-Instruct   160       1          0
+   6 tilelang  gpt-oss-120b                   156      24          2
+
+termination reasons: {'no_improvement_3_turns': 5}
+
+chains with a best-so-far correct kernel: 48/320, best_speedup geomean: 0.854x
+[expand-cycle 20260826T223725] report docinject:
+total chains: 680
+
+turn lang      model                            n correct terminated
+   1 tilelang  gpt-oss-120b                     2       2          0
+   2 cuda      gpt-oss-120b                     4       4          0
+   2 tilelang  gpt-oss-120b                     1       1          0
+   4 cuda      gpt-oss-120b                     2       2          1
+   4 tilelang  Qwen3-Coder-30B-A3B-Instruct     9       9          9
+   4 tilelang  gpt-oss-120b                     3       3          3
+   4 triton    Qwen3-Coder-30B-A3B-Instruct     6       6          6
+   5 cuda      Qwen3-Coder-30B-A3B-Instruct     1       1          0
+   5 cuda      gpt-oss-120b                    41      27          2
+   5 tilelang  Qwen3-Coder-30B-A3B-Instruct     8       6          1
+   5 tilelang  gpt-oss-120b                    25      17          2
+   5 triton    Qwen3-Coder-30B-A3B-Instruct     4       2          1
+   5 triton    gpt-oss-120b                    22       8          1
+   6 cuda      Qwen3-Coder-30B-A3B-Instruct    84      13          0
+   6 cuda      gpt-oss-120b                    38      16          1
+   6 ptx       Qwen3-Coder-30B-A3B-Instruct    85       0          0
+   6 ptx       gpt-oss-120b                    85       0          0
+   6 tilelang  Qwen3-Coder-30B-A3B-Instruct    68       0          0
+   6 tilelang  gpt-oss-120b                    54       8          1
+   6 triton    Qwen3-Coder-30B-A3B-Instruct    75       0          0
+   6 triton    gpt-oss-120b                    63       8          0
+
+termination reasons: {'no_improvement_3_turns': 28}
+
+chains with a best-so-far correct kernel: 202/680, best_speedup geomean: 0.515x
+[expand-cycle 20260826T223725] cycle complete
+[20260827T032724] pushing checkpoint (turn ~5) to results-a100-phase2-expand
+fatal: pathspec 'scripts/phase2_expand_*.py' did not match any files
+[20260827T032724] nothing new to commit at this checkpoint
+Everything up-to-date
+/home/jun/kernel-lang-2x2/kernel_exp/results/eval/multiturn_state_a100_tilelang.json: 5/320 terminated
+/home/jun/kernel-lang-2x2/kernel_exp/results/eval/multiturn_state_a100_docinject.json: 28/680 terminated
+[20260827T032726] --- driving cycle 6 ---
+[expand-cycle 20260827T032726] starting gptoss serve
+[expand-cycle 20260827T032726] gptoss healthy, generating (tilelang then docinject)
+[expand-cycle 20260827T032726] gptoss generate done, stopping serve
+[expand-cycle 20260827T032726] starting qwen serve
+[expand-cycle 20260827T032726] qwen healthy, generating (tilelang then docinject)
+[expand-cycle 20260827T032726] qwen generate done, stopping serve
+[expand-cycle 20260827T032726] GPU exclusivity check + evaluate tilelang
+[expand-cycle 20260827T032726] evaluate docinject
+[expand-cycle 20260827T032726] report tilelang:
+total chains: 320
+
+turn lang      model                            n correct terminated
+   5 tilelang  gpt-oss-120b                     3       3          3
+   6 tilelang  gpt-oss-120b                     3       2          2
+   7 tilelang  Qwen3-Coder-30B-A3B-Instruct   160       0          0
+   7 tilelang  gpt-oss-120b                   154      21          7
+
+termination reasons: {'no_improvement_3_turns': 12}
+
+chains with a best-so-far correct kernel: 48/320, best_speedup geomean: 0.854x
+[expand-cycle 20260827T032726] report docinject:
+total chains: 680
+
+turn lang      model                            n correct terminated
+   1 tilelang  gpt-oss-120b                     2       2          0
+   2 cuda      gpt-oss-120b                     4       4          0
+   2 tilelang  gpt-oss-120b                     1       1          0
+   4 cuda      gpt-oss-120b                     2       2          1
+   4 tilelang  Qwen3-Coder-30B-A3B-Instruct     9       9          9
+   4 tilelang  gpt-oss-120b                     3       3          3
+   4 triton    Qwen3-Coder-30B-A3B-Instruct     6       6          6
+   5 cuda      Qwen3-Coder-30B-A3B-Instruct     1       1          0
+   5 cuda      gpt-oss-120b                     2       2          2
+   5 tilelang  Qwen3-Coder-30B-A3B-Instruct     1       1          1
+   5 tilelang  gpt-oss-120b                     2       2          2
+   5 triton    Qwen3-Coder-30B-A3B-Instruct     1       1          1
+   5 triton    gpt-oss-120b                     1       1          1
+   6 cuda      gpt-oss-120b                    40      23          2
+   6 tilelang  Qwen3-Coder-30B-A3B-Instruct     7       5          3
+   6 tilelang  gpt-oss-120b                    24      19          3
+   6 triton    Qwen3-Coder-30B-A3B-Instruct     3       1          0
+   6 triton    gpt-oss-120b                    21       7          1
+   7 cuda      Qwen3-Coder-30B-A3B-Instruct    84      16          5
+   7 cuda      gpt-oss-120b                    37      13          1
+   7 ptx       Qwen3-Coder-30B-A3B-Instruct    85       0          0
+   7 ptx       gpt-oss-120b                    85       0          0
+   7 tilelang  Qwen3-Coder-30B-A3B-Instruct    68       0          0
+   7 tilelang  gpt-oss-120b                    53      14          1
+   7 triton    Qwen3-Coder-30B-A3B-Instruct    75       2          0
+   7 triton    gpt-oss-120b                    63       2          0
+
+termination reasons: {'no_improvement_3_turns': 42}
+
+chains with a best-so-far correct kernel: 206/680, best_speedup geomean: 0.528x
+[expand-cycle 20260827T032726] cycle complete
+[20260827T082032] pushing checkpoint (turn ~6) to results-a100-phase2-expand
+fatal: pathspec 'scripts/phase2_expand_*.py' did not match any files
+[20260827T082032] nothing new to commit at this checkpoint
+Everything up-to-date
+/home/jun/kernel-lang-2x2/kernel_exp/results/eval/multiturn_state_a100_tilelang.json: 12/320 terminated
+/home/jun/kernel-lang-2x2/kernel_exp/results/eval/multiturn_state_a100_docinject.json: 42/680 terminated
+[20260827T082033] --- driving cycle 7 ---
+[expand-cycle 20260827T082033] starting gptoss serve
+[expand-cycle 20260827T082033] gptoss healthy, generating (tilelang then docinject)
+[expand-cycle 20260827T082033] gptoss generate done, stopping serve
+[expand-cycle 20260827T082033] starting qwen serve
+[expand-cycle 20260827T082033] qwen healthy, generating (tilelang then docinject)
+[expand-cycle 20260827T082033] qwen generate done, stopping serve
+[expand-cycle 20260827T082033] GPU exclusivity check + evaluate tilelang
+[expand-cycle 20260827T082033] evaluate docinject
+[expand-cycle 20260827T082033] report tilelang:
+total chains: 320
+
+turn lang      model                            n correct terminated
+   5 tilelang  gpt-oss-120b                     3       3          3
+   6 tilelang  gpt-oss-120b                     2       2          2
+   7 tilelang  gpt-oss-120b                     8       7          7
+   8 tilelang  Qwen3-Coder-30B-A3B-Instruct   160       0          0
+   8 tilelang  gpt-oss-120b                   147      18          4
+
+termination reasons: {'no_improvement_3_turns': 16}
+
+chains with a best-so-far correct kernel: 51/320, best_speedup geomean: 0.862x
+[expand-cycle 20260827T082033] report docinject:
+total chains: 680
+
+turn lang      model                            n correct terminated
+   1 tilelang  gpt-oss-120b                     2       2          0
+   2 cuda      gpt-oss-120b                     4       4          0
+   2 tilelang  gpt-oss-120b                     1       1          0
+   4 cuda      gpt-oss-120b                     2       2          1
+   4 tilelang  Qwen3-Coder-30B-A3B-Instruct     9       9          9
+   4 tilelang  gpt-oss-120b                     3       3          3
+   4 triton    Qwen3-Coder-30B-A3B-Instruct     6       6          6
+   5 cuda      Qwen3-Coder-30B-A3B-Instruct     1       1          0
+   5 cuda      gpt-oss-120b                     2       2          2
+   5 tilelang  Qwen3-Coder-30B-A3B-Instruct     1       1          1
+   5 tilelang  gpt-oss-120b                     2       2          2
+   5 triton    Qwen3-Coder-30B-A3B-Instruct     1       1          1
+   5 triton    gpt-oss-120b                     1       1          1
+   6 cuda      gpt-oss-120b                     2       2          2
+   6 tilelang  Qwen3-Coder-30B-A3B-Instruct     3       3          3
+   6 tilelang  gpt-oss-120b                     3       3          3
+   6 triton    gpt-oss-120b                     1       1          1
+   7 cuda      Qwen3-Coder-30B-A3B-Instruct     5       5          5
+   7 cuda      gpt-oss-120b                    39      22          6
+   7 tilelang  Qwen3-Coder-30B-A3B-Instruct     4       2          1
+   7 tilelang  gpt-oss-120b                    22      16          6
+   7 triton    Qwen3-Coder-30B-A3B-Instruct     3       1          0
+   7 triton    gpt-oss-120b                    20       5          0
+   8 cuda      Qwen3-Coder-30B-A3B-Instruct    79       8          1
+   8 cuda      gpt-oss-120b                    36      10          1
+   8 ptx       Qwen3-Coder-30B-A3B-Instruct    85       0          0
+   8 ptx       gpt-oss-120b                    85       0          0
+   8 tilelang  Qwen3-Coder-30B-A3B-Instruct    68       0          0
+   8 tilelang  gpt-oss-120b                    52       7          0
+   8 triton    Qwen3-Coder-30B-A3B-Instruct    75       1          0
+   8 triton    gpt-oss-120b                    63       5          0
+
+termination reasons: {'no_improvement_3_turns': 55}
+
+chains with a best-so-far correct kernel: 206/680, best_speedup geomean: 0.54x
+[expand-cycle 20260827T082033] cycle complete
+[20260827T130027] pushing checkpoint (turn ~7) to results-a100-phase2-expand
+fatal: pathspec 'scripts/phase2_expand_*.py' did not match any files
+[20260827T130027] nothing new to commit at this checkpoint
+Everything up-to-date
+/home/jun/kernel-lang-2x2/kernel_exp/results/eval/multiturn_state_a100_tilelang.json: 16/320 terminated
+/home/jun/kernel-lang-2x2/kernel_exp/results/eval/multiturn_state_a100_docinject.json: 55/680 terminated
+[20260827T130028] --- driving cycle 8 ---
+[expand-cycle 20260827T130028] starting gptoss serve
+[expand-cycle 20260827T130028] gptoss healthy, generating (tilelang then docinject)
+[expand-cycle 20260827T130028] gptoss generate done, stopping serve
+[expand-cycle 20260827T130028] starting qwen serve
+[expand-cycle 20260827T130028] qwen healthy, generating (tilelang then docinject)
+[expand-cycle 20260827T130028] qwen generate done, stopping serve
+[expand-cycle 20260827T130028] GPU exclusivity check + evaluate tilelang
+[expand-cycle 20260827T130028] evaluate docinject
+[expand-cycle 20260827T130028] report tilelang:
+total chains: 320
+
+turn lang      model                            n correct terminated
+   5 tilelang  gpt-oss-120b                     3       3          3
+   6 tilelang  gpt-oss-120b                     2       2          2
+   7 tilelang  gpt-oss-120b                     7       7          7
+   8 tilelang  gpt-oss-120b                     5       4          4
+   9 tilelang  Qwen3-Coder-30B-A3B-Instruct   160       1          0
+   9 tilelang  gpt-oss-120b                   143      15          2
+
+termination reasons: {'no_improvement_3_turns': 18}
+
+chains with a best-so-far correct kernel: 54/320, best_speedup geomean: 0.869x
+[expand-cycle 20260827T130028] report docinject:
+total chains: 680
+
+turn lang      model                            n correct terminated
+   1 tilelang  gpt-oss-120b                     2       2          0
+   2 cuda      gpt-oss-120b                     4       4          0
+   2 tilelang  gpt-oss-120b                     1       1          0
+   4 cuda      gpt-oss-120b                     2       2          1
+   4 tilelang  Qwen3-Coder-30B-A3B-Instruct     9       9          9
+   4 tilelang  gpt-oss-120b                     3       3          3
+   4 triton    Qwen3-Coder-30B-A3B-Instruct     6       6          6
+   5 cuda      Qwen3-Coder-30B-A3B-Instruct     1       1          0
+   5 cuda      gpt-oss-120b                     2       2          2
+   5 tilelang  Qwen3-Coder-30B-A3B-Instruct     1       1          1
+   5 tilelang  gpt-oss-120b                     2       2          2
+   5 triton    Qwen3-Coder-30B-A3B-Instruct     1       1          1
+   5 triton    gpt-oss-120b                     1       1          1
+   6 cuda      gpt-oss-120b                     2       2          2
+   6 tilelang  Qwen3-Coder-30B-A3B-Instruct     3       3          3
+   6 tilelang  gpt-oss-120b                     3       3          3
+   6 triton    gpt-oss-120b                     1       1          1
+   7 cuda      Qwen3-Coder-30B-A3B-Instruct     5       5          5
+   7 cuda      gpt-oss-120b                     6       6          6
+   7 tilelang  Qwen3-Coder-30B-A3B-Instruct     1       1          1
+   7 tilelang  gpt-oss-120b                     6       6          6
+   8 cuda      Qwen3-Coder-30B-A3B-Instruct     1       1          1
+   8 cuda      gpt-oss-120b                    34      21          2
+   8 tilelang  Qwen3-Coder-30B-A3B-Instruct     3       1          0
+   8 tilelang  gpt-oss-120b                    16       8          3
+   8 triton    Qwen3-Coder-30B-A3B-Instruct     3       1          1
+   8 triton    gpt-oss-120b                    20       6          0
+   9 cuda      Qwen3-Coder-30B-A3B-Instruct    78       9          3
+   9 cuda      gpt-oss-120b                    35      11          1
+   9 ptx       Qwen3-Coder-30B-A3B-Instruct    85       0          0
+   9 ptx       gpt-oss-120b                    85       0          0
+   9 tilelang  Qwen3-Coder-30B-A3B-Instruct    68       0          0
+   9 tilelang  gpt-oss-120b                    52       7          1
+   9 triton    Qwen3-Coder-30B-A3B-Instruct    75       1          0
+   9 triton    gpt-oss-120b                    63       4          0
+
+termination reasons: {'no_improvement_3_turns': 65}
+
+chains with a best-so-far correct kernel: 207/680, best_speedup geomean: 0.545x
+[expand-cycle 20260827T130028] cycle complete
+[20260827T174458] pushing checkpoint (turn ~8) to results-a100-phase2-expand
+fatal: pathspec 'scripts/phase2_expand_*.py' did not match any files
+[20260827T174458] nothing new to commit at this checkpoint
+Everything up-to-date
+/home/jun/kernel-lang-2x2/kernel_exp/results/eval/multiturn_state_a100_tilelang.json: 18/320 terminated
+/home/jun/kernel-lang-2x2/kernel_exp/results/eval/multiturn_state_a100_docinject.json: 65/680 terminated
+[20260827T174459] --- driving cycle 9 ---
+[expand-cycle 20260827T174459] starting gptoss serve
+[expand-cycle 20260827T174459] gptoss healthy, generating (tilelang then docinject)
+[expand-cycle 20260827T174459] gptoss generate done, stopping serve
+[expand-cycle 20260827T174459] starting qwen serve
+[expand-cycle 20260827T174459] qwen healthy, generating (tilelang then docinject)
+[expand-cycle 20260827T174459] qwen generate done, stopping serve
+[expand-cycle 20260827T174459] GPU exclusivity check + evaluate tilelang
+[expand-cycle 20260827T174459] evaluate docinject
+[expand-cycle 20260827T174459] report tilelang:
+total chains: 320
+
+turn lang      model                            n correct terminated
+   5 tilelang  gpt-oss-120b                     3       3          3
+   6 tilelang  gpt-oss-120b                     2       2          2
+   7 tilelang  gpt-oss-120b                     7       7          7
+   8 tilelang  gpt-oss-120b                     4       4          4
+   9 tilelang  gpt-oss-120b                     3       2          2
+  10 tilelang  Qwen3-Coder-30B-A3B-Instruct   160       0        160
+  10 tilelang  gpt-oss-120b                   141      15        141
+
+termination reasons: {'k_max_reached': 301, 'no_improvement_3_turns': 18}
+
+chains with a best-so-far correct kernel: 57/320, best_speedup geomean: 0.853x
+[expand-cycle 20260827T174459] report docinject:
+total chains: 680
+
+turn lang      model                            n correct terminated
+   1 tilelang  gpt-oss-120b                     2       2          0
+   2 cuda      gpt-oss-120b                     4       4          0
+   2 tilelang  gpt-oss-120b                     1       1          0
+   4 cuda      gpt-oss-120b                     2       2          1
+   4 tilelang  Qwen3-Coder-30B-A3B-Instruct     9       9          9
+   4 tilelang  gpt-oss-120b                     3       3          3
+   4 triton    Qwen3-Coder-30B-A3B-Instruct     6       6          6
+   5 cuda      Qwen3-Coder-30B-A3B-Instruct     1       1          0
+   5 cuda      gpt-oss-120b                     2       2          2
+   5 tilelang  Qwen3-Coder-30B-A3B-Instruct     1       1          1
+   5 tilelang  gpt-oss-120b                     2       2          2
+   5 triton    Qwen3-Coder-30B-A3B-Instruct     1       1          1
+   5 triton    gpt-oss-120b                     1       1          1
+   6 cuda      gpt-oss-120b                     2       2          2
+   6 tilelang  Qwen3-Coder-30B-A3B-Instruct     3       3          3
+   6 tilelang  gpt-oss-120b                     3       3          3
+   6 triton    gpt-oss-120b                     1       1          1
+   7 cuda      Qwen3-Coder-30B-A3B-Instruct     5       5          5
+   7 cuda      gpt-oss-120b                     6       6          6
+   7 tilelang  Qwen3-Coder-30B-A3B-Instruct     1       1          1
+   7 tilelang  gpt-oss-120b                     6       6          6
+   8 cuda      Qwen3-Coder-30B-A3B-Instruct     1       1          1
+   8 cuda      gpt-oss-120b                     2       2          2
+   8 tilelang  gpt-oss-120b                     3       3          3
+   8 triton    Qwen3-Coder-30B-A3B-Instruct     1       1          1
+   9 cuda      Qwen3-Coder-30B-A3B-Instruct     3       3          3
+   9 cuda      gpt-oss-120b                    33      22          2
+   9 tilelang  Qwen3-Coder-30B-A3B-Instruct     3       1          0
+   9 tilelang  gpt-oss-120b                    14       9          4
+   9 triton    Qwen3-Coder-30B-A3B-Instruct     2       0          0
+   9 triton    gpt-oss-120b                    20       4          0
+  10 cuda      Qwen3-Coder-30B-A3B-Instruct    75       5         75
+  10 cuda      gpt-oss-120b                    34       9         34
+  10 ptx       Qwen3-Coder-30B-A3B-Instruct    85       0         85
+  10 ptx       gpt-oss-120b                    85       0         85
+  10 tilelang  Qwen3-Coder-30B-A3B-Instruct    68       0         68
+  10 tilelang  gpt-oss-120b                    51      11         51
+  10 triton    Qwen3-Coder-30B-A3B-Instruct    75       2         75
+  10 triton    gpt-oss-120b                    63       4         63
+
+termination reasons: {'k_max_reached': 536, 'no_improvement_3_turns': 69}
+
+chains with a best-so-far correct kernel: 207/680, best_speedup geomean: 0.57x
+[expand-cycle 20260827T174459] cycle complete
+[20260827T221737] pushing checkpoint (turn ~9) to results-a100-phase2-expand
+fatal: pathspec 'scripts/phase2_expand_*.py' did not match any files
+[20260827T221738] nothing new to commit at this checkpoint
+Everything up-to-date
+/home/jun/kernel-lang-2x2/kernel_exp/results/eval/multiturn_state_a100_tilelang.json: 319/320 terminated
+/home/jun/kernel-lang-2x2/kernel_exp/results/eval/multiturn_state_a100_docinject.json: 605/680 terminated
+[20260827T221739] --- driving cycle 10 ---
+[expand-cycle 20260827T221739] starting gptoss serve
+[expand-cycle 20260827T221739] gptoss healthy, generating (tilelang then docinject)
+[expand-cycle 20260827T221739] gptoss generate done, stopping serve
+[expand-cycle 20260827T221739] starting qwen serve
+[expand-cycle 20260827T221739] qwen healthy, generating (tilelang then docinject)
+[expand-cycle 20260827T221739] qwen generate done, stopping serve
+[expand-cycle 20260827T221739] GPU exclusivity check + evaluate tilelang
+[expand-cycle 20260827T221739] evaluate docinject
+[expand-cycle 20260827T221739] report tilelang:
+total chains: 320
+
+turn lang      model                            n correct terminated
+   5 tilelang  gpt-oss-120b                     3       3          3
+   6 tilelang  gpt-oss-120b                     2       2          2
+   7 tilelang  gpt-oss-120b                     7       7          7
+   8 tilelang  gpt-oss-120b                     4       4          4
+   9 tilelang  gpt-oss-120b                     2       2          2
+  10 tilelang  Qwen3-Coder-30B-A3B-Instruct   160       0        160
+  10 tilelang  gpt-oss-120b                   142      15        142
+
+termination reasons: {'k_max_reached': 302, 'no_improvement_3_turns': 18}
+
+chains with a best-so-far correct kernel: 57/320, best_speedup geomean: 0.853x
+[expand-cycle 20260827T221739] report docinject:
+total chains: 680
+
+turn lang      model                            n correct terminated
+   1 tilelang  gpt-oss-120b                     2       2          0
+   2 cuda      gpt-oss-120b                     4       4          0
+   2 tilelang  gpt-oss-120b                     1       1          0
+   4 cuda      gpt-oss-120b                     2       2          1
+   4 tilelang  Qwen3-Coder-30B-A3B-Instruct     9       9          9
+   4 tilelang  gpt-oss-120b                     3       3          3
+   4 triton    Qwen3-Coder-30B-A3B-Instruct     6       6          6
+   5 cuda      Qwen3-Coder-30B-A3B-Instruct     1       1          0
+   5 cuda      gpt-oss-120b                     2       2          2
+   5 tilelang  Qwen3-Coder-30B-A3B-Instruct     1       1          1
+   5 tilelang  gpt-oss-120b                     2       2          2
+   5 triton    Qwen3-Coder-30B-A3B-Instruct     1       1          1
+   5 triton    gpt-oss-120b                     1       1          1
+   6 cuda      gpt-oss-120b                     2       2          2
+   6 tilelang  Qwen3-Coder-30B-A3B-Instruct     3       3          3
+   6 tilelang  gpt-oss-120b                     3       3          3
+   6 triton    gpt-oss-120b                     1       1          1
+   7 cuda      Qwen3-Coder-30B-A3B-Instruct     5       5          5
+   7 cuda      gpt-oss-120b                     6       6          6
+   7 tilelang  Qwen3-Coder-30B-A3B-Instruct     1       1          1
+   7 tilelang  gpt-oss-120b                     6       6          6
+   8 cuda      Qwen3-Coder-30B-A3B-Instruct     1       1          1
+   8 cuda      gpt-oss-120b                     2       2          2
+   8 tilelang  gpt-oss-120b                     3       3          3
+   8 triton    Qwen3-Coder-30B-A3B-Instruct     1       1          1
+   9 cuda      Qwen3-Coder-30B-A3B-Instruct     3       3          3
+   9 cuda      gpt-oss-120b                     3       3          2
+   9 tilelang  gpt-oss-120b                     4       4          4
+  10 cuda      Qwen3-Coder-30B-A3B-Instruct    75       5         75
+  10 cuda      gpt-oss-120b                    64      28         64
+  10 ptx       Qwen3-Coder-30B-A3B-Instruct    85       0         85
+  10 ptx       gpt-oss-120b                    85       0         85
+  10 tilelang  Qwen3-Coder-30B-A3B-Instruct    71       1         71
+  10 tilelang  gpt-oss-120b                    61      16         61
+  10 triton    Qwen3-Coder-30B-A3B-Instruct    77       2         77
+  10 triton    gpt-oss-120b                    83      10         83
+
+termination reasons: {'k_max_reached': 601, 'no_improvement_3_turns': 69}
+
+chains with a best-so-far correct kernel: 207/680, best_speedup geomean: 0.603x
+[expand-cycle 20260827T221739] cycle complete
+[20260827T233944] pushing checkpoint (turn ~10) to results-a100-phase2-expand
+fatal: pathspec 'scripts/phase2_expand_*.py' did not match any files
+[20260827T233944] nothing new to commit at this checkpoint
+Everything up-to-date
+/home/jun/kernel-lang-2x2/kernel_exp/results/eval/multiturn_state_a100_tilelang.json: 320/320 terminated
+/home/jun/kernel-lang-2x2/kernel_exp/results/eval/multiturn_state_a100_docinject.json: 670/680 terminated
+[20260827T233946] === multiturn_run_a100_expand.sh finished after 10 driver iteration(s) ===

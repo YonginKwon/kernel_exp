@@ -1,0 +1,41 @@
+{
+  "chain_id": "tilelang|0shot|22_Tanh|Qwen/Qwen3-Coder-30B-A3B-Instruct|3",
+  "turn": 5,
+  "phase": "repair",
+  "task": "22_Tanh",
+  "language": "tilelang",
+  "condition": "0shot",
+  "sample_index": 3,
+  "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+  "base_url": "http://localhost:8001/v1",
+  "hf_revision": "b2cff646eb4bb1d68355c01b18ae02e7cf42d120",
+  "vllm_version": "0.10.1",
+  "tensor_parallel_size": 1,
+  "temperature": 0.8,
+  "max_tokens": 8192,
+  "seed": 834246187,
+  "timestamp": "2026-08-26T18:48:39+0900",
+  "prompt_sha256": "aa78775aaff9f51066c5341a8a56fb96f2b46ae7c40365cb22bef3d16197eaf1",
+  "prompt": "You are given a PyTorch reference implementation of a neural network operator.\nWrite a functionally equivalent GPU kernel in TileLang.\n\nRequirements:\n- All tensor inputs and outputs are float16 (fp16). Accumulation precision is\n  your choice unless the reference dictates otherwise.\n- Target GPU: NVIDIA RTX PRO 6000 Blackwell (compute capability 12.0).\n- Your kernel must be a drop-in replacement: same input shapes, same output\n  shapes and dtype as the reference.\n- Output ONLY the complete TileLang solution inside a single code block.\n  No explanation outside the code block.\n\nWrite a TileLang kernel (tilelang.jit / T.prim_func). Provide the full\nPython file defining ModelNew that calls your TileLang kernel.\n\nReference implementation:\n```python\nimport torch\nimport torch.nn as nn\n\nclass Model(nn.Module):\n    \"\"\"\n    Simple model that performs a Tanh activation.\n    \"\"\"\n    def __init__(self):\n        super(Model, self).__init__()\n    \n    def forward(self, x: torch.Tensor) -> torch.Tensor:\n        \"\"\"\n        Applies Tanh activation to the input tensor.\n\n        Args:\n            x (torch.Tensor): Input tensor of any shape.\n\n        Returns:\n            torch.Tensor: Output tensor with Tanh applied, same shape as input.\n        \"\"\"\n        return torch.tanh(x)\n\nbatch_size = 4096\ndim = 393216\n\ndef get_inputs():\n    x = torch.rand(batch_size, dim)\n    return [x]\n\ndef get_init_inputs():\n    return []  # No special initialization inputs needed\n```\n\nYour previous solution:\n```\nimport torch\nimport tilelang as T\nimport numpy as np\n\n@T.prim_func\ndef tanh_kernel(\n    x: T.Buffer((4096, 393216), \"float16\"),\n    y: T.Buffer((4096, 393216), \"float16\")\n):\n    # Define thread and block dimensions\n    T.func_attr({\"global_symbol\": \"tanh_kernel\", \"tir.noalias\": True})\n    \n    # Thread mapping\n    i = T.thread_binding(0, 4096, \"blockIdx.y\")\n    j = T.thread_binding(0, 393216, \"blockIdx.x\")\n    \n    # Load input value\n    x_val = x[i, j]\n    \n    # Compute tanh using approximation for better performance on GPU\n    # Using the standard math library function which is optimized\n    y[i, j] = T.tanh(x_val)\n\nclass ModelNew(torch.nn.Module):\n    def __init__(self):\n        super().__init__()\n        \n    def forward(self, x: torch.Tensor) -> torch.Tensor:\n        # Create output tensor\n        y = torch.empty_like(x)\n        \n        # Launch kernel\n        tanh_kernel(x, y)\n        \n        return y\n\n# Test function\ndef get_inputs():\n    x = torch.rand(4096, 393216, dtype=torch.float16)\n    return [x]\n\ndef get_init_inputs():\n    return []\n\n```\n\nYour previous solution failed to compile with the following error:\n\nmodule 'tilelang' has no attribute 'prim_func'\n\nProvide the corrected complete solution in a single code block.\n",
+  "env": {
+    "torch_version": "2.5.1+cu121",
+    "cuda_version": "12.1",
+    "gpu_name": "NVIDIA A100 80GB PCIe",
+    "compute_capability": [
+      8,
+      0
+    ],
+    "driver_version": "535.309.01\n535.309.01"
+  },
+  "response_raw": "```python\nimport torch\nimport tilelang as T\nimport numpy as np\n\n@T.prim_func\ndef tanh_kernel(\n    x: T.Buffer((4096, 393216), \"float16\"),\n    y: T.Buffer((4096, 393216), \"float16\")\n):\n    # Define thread and block dimensions\n    T.func_attr({\"global_symbol\": \"tanh_kernel\", \"tir.noalias\": True})\n    \n    # Thread mapping\n    i = T.thread_binding(0, 4096, \"blockIdx.y\")\n    j = T.thread_binding(0, 393216, \"blockIdx.x\")\n    \n    # Load input value\n    x_val = x[i, j]\n    \n    # Compute tanh using approximation for better performance on GPU\n    # Using the standard math library function which is optimized\n    y[i, j] = T.tanh(x_val)\n\nclass ModelNew(torch.nn.Module):\n    def __init__(self):\n        super().__init__()\n        \n    def forward(self, x: torch.Tensor) -> torch.Tensor:\n        # Create output tensor\n        y = torch.empty_like(x)\n        \n        # Launch kernel\n        tanh_kernel(x, y)\n        \n        return y\n\n# Test function\ndef get_inputs():\n    x = torch.rand(4096, 393216, dtype=torch.float16)\n    return [x]\n\ndef get_init_inputs():\n    return []\n```",
+  "response_finish_reason": "stop",
+  "usage": {
+    "completion_tokens": 324,
+    "prompt_tokens": 704,
+    "total_tokens": 1028,
+    "completion_tokens_details": null,
+    "prompt_tokens_details": null
+  },
+  "parsed_code": "import torch\nimport tilelang as T\nimport numpy as np\n\n@T.prim_func\ndef tanh_kernel(\n    x: T.Buffer((4096, 393216), \"float16\"),\n    y: T.Buffer((4096, 393216), \"float16\")\n):\n    # Define thread and block dimensions\n    T.func_attr({\"global_symbol\": \"tanh_kernel\", \"tir.noalias\": True})\n    \n    # Thread mapping\n    i = T.thread_binding(0, 4096, \"blockIdx.y\")\n    j = T.thread_binding(0, 393216, \"blockIdx.x\")\n    \n    # Load input value\n    x_val = x[i, j]\n    \n    # Compute tanh using approximation for better performance on GPU\n    # Using the standard math library function which is optimized\n    y[i, j] = T.tanh(x_val)\n\nclass ModelNew(torch.nn.Module):\n    def __init__(self):\n        super().__init__()\n        \n    def forward(self, x: torch.Tensor) -> torch.Tensor:\n        # Create output tensor\n        y = torch.empty_like(x)\n        \n        # Launch kernel\n        tanh_kernel(x, y)\n        \n        return y\n\n# Test function\ndef get_inputs():\n    x = torch.rand(4096, 393216, dtype=torch.float16)\n    return [x]\n\ndef get_init_inputs():\n    return []\n",
+  "status": "generated"
+}

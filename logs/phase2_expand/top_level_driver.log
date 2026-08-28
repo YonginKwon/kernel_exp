@@ -1,0 +1,110 @@
+[phase2-expand-gen 20260825T225511] starting gptoss serve
+[phase2-expand-gen 20260825T225511] gptoss healthy, generating (tilelang 0shot + docinject x4 langs)
+[phase2-expand-gen 20260825T225511] generate: language=tilelang condition=0shot model=openai/gpt-oss-120b seed=42000
+[phase2-expand-gen 20260825T225511] generate: language=cuda condition=docinject model=openai/gpt-oss-120b seed=44000
+[phase2-expand-gen 20260825T225511] generate: language=ptx condition=docinject model=openai/gpt-oss-120b seed=44100
+[phase2-expand-gen 20260825T225511] generate: language=triton condition=docinject model=openai/gpt-oss-120b seed=44200
+[phase2-expand-gen 20260825T225511] generate: language=tilelang condition=docinject model=openai/gpt-oss-120b seed=44300
+[phase2-expand-gen 20260825T225511] gptoss generate done, stopping serve
+[phase2-expand-gen 20260825T225511] starting qwen serve
+[phase2-expand-gen 20260825T225511] qwen healthy, generating (tilelang 0shot + docinject x4 langs)
+[phase2-expand-gen 20260825T225511] generate: language=tilelang condition=0shot model=Qwen/Qwen3-Coder-30B-A3B-Instruct seed=43000
+[phase2-expand-gen 20260825T225511] generate: language=cuda condition=docinject model=Qwen/Qwen3-Coder-30B-A3B-Instruct seed=45000
+[phase2-expand-gen 20260825T225511] generate: language=ptx condition=docinject model=Qwen/Qwen3-Coder-30B-A3B-Instruct seed=45100
+[phase2-expand-gen 20260825T225511] generate: language=triton condition=docinject model=Qwen/Qwen3-Coder-30B-A3B-Instruct seed=45200
+[phase2-expand-gen 20260825T225511] generate: language=tilelang condition=docinject model=Qwen/Qwen3-Coder-30B-A3B-Instruct seed=45300
+[phase2-expand-gen 20260825T225511] qwen generate done, stopping serve
+[phase2-expand-gen 20260825T225511] === turn-1 generation complete for all new batches ===
+[phase2-expand-eval 20260826T004728] evaluate: tilelang 0shot
+[phase2-expand-eval 20260826T004728] evaluate: cuda docinject
+[phase2-expand-eval 20260826T004728] evaluate: ptx docinject
+[phase2-expand-eval 20260826T004728] evaluate: triton docinject
+[phase2-expand-eval 20260826T004728] evaluate: tilelang docinject
+[phase2-expand-eval 20260826T004728] === turn-1 evaluation complete for all new batches ===
+[init-a100-tilelang] /home/jun/kernel-lang-2x2/kernel_exp/results/eval/timing_a100_tilelang.json not found -- no turn-1 timing backfill; multiturn.py cmd_evaluate's catch-up pass will measure lazily.
+[init-a100-tilelang] 320 turn-1 chains (32-task 0shot, tilelang only)
+[init-a100-tilelang] backfilled last_timing for 0/1 turn-1-correct chains
+[init-a100-tilelang] 1 turn-1-correct chain(s) have no timing yet (lazy catch-up): ['tilelang|0shot|48_Mean_reduction_over_a_dimension|openai/gpt-oss-120b|4']
+[init-a100-tilelang] wrote results/eval/multiturn_state_a100_tilelang.json (320 chains, all at turn 1)
+[init-a100-docinject] /home/jun/kernel-lang-2x2/kernel_exp/results/eval/timing_a100_docinject.json not found -- no turn-1 timing backfill; multiturn.py cmd_evaluate's catch-up pass will measure lazily.
+[init-a100-docinject] 680 turn-1 chains (17-task docinject, ['cuda', 'ptx', 'triton', 'tilelang'])
+[init-a100-docinject] backfilled last_timing for 0/120 turn-1-correct chains
+[init-a100-docinject] 120 turn-1-correct chain(s) have no timing yet (lazy catch-up): ['cuda|docinject|17_Matmul_with_transposed_B|openai/gpt-oss-120b|0', 'cuda|docinject|17_Matmul_with_transposed_B|openai/gpt-oss-120b|1', 'cuda|docinject|17_Matmul_with_transposed_B|openai/gpt-oss-120b|2', 'cuda|docinject|17_Matmul_with_transposed_B|openai/gpt-oss-120b|3', 'cuda|docinject|17_Matmul_with_transposed_B|openai/gpt-oss-120b|4', 'cuda|docinject|19_ReLU|openai/gpt-oss-120b|1', 'cuda|docinject|19_ReLU|openai/gpt-oss-120b|3', 'cuda|docinject|19_ReLU|openai/gpt-oss-120b|4', 'cuda|docinject|1_Square_matrix_multiplication_|openai/gpt-oss-120b|0', 'cuda|docinject|1_Square_matrix_multiplication_|openai/gpt-oss-120b|2', 'cuda|docinject|1_Square_matrix_multiplication_|openai/gpt-oss-120b|3', 'cuda|docinject|1_Square_matrix_multiplication_|openai/gpt-oss-120b|4', 'cuda|docinject|26_GELU_|openai/gpt-oss-120b|0', 'cuda|docinject|26_GELU_|openai/gpt-oss-120b|1', 'cuda|docinject|26_GELU_|openai/gpt-oss-120b|2', 'cuda|docinject|26_GELU_|openai/gpt-oss-120b|3', 'cuda|docinject|26_GELU_|openai/gpt-oss-120b|4', 'cuda|docinject|35_GroupNorm_|openai/gpt-oss-120b|0', 'cuda|docinject|35_GroupNorm_|openai/gpt-oss-120b|2', 'cuda|docinject|35_GroupNorm_|openai/gpt-oss-120b|3', 'cuda|docinject|35_GroupNorm_|openai/gpt-oss-120b|4', 'cuda|docinject|3_Batched_matrix_multiplication|openai/gpt-oss-120b|0', 'cuda|docinject|3_Batched_matrix_multiplication|openai/gpt-oss-120b|1', 'cuda|docinject|3_Batched_matrix_multiplication|openai/gpt-oss-120b|2', 'cuda|docinject|3_Batched_matrix_multiplication|openai/gpt-oss-120b|3', 'cuda|docinject|3_Batched_matrix_multiplication|openai/gpt-oss-120b|4', 'cuda|docinject|40_LayerNorm|openai/gpt-oss-120b|0', 'cuda|docinject|40_LayerNorm|openai/gpt-oss-120b|1', 'cuda|docinject|40_LayerNorm|openai/gpt-oss-120b|3', 'cuda|docinject|42_Max_Pooling_2D|openai/gpt-oss-120b|1', 'cuda|docinject|42_Max_Pooling_2D|openai/gpt-oss-120b|2', 'cuda|docinject|42_Max_Pooling_2D|openai/gpt-oss-120b|3', 'cuda|docinject|42_Max_Pooling_2D|openai/gpt-oss-120b|4', 'cuda|docinject|47_Sum_reduction_over_a_dimension|openai/gpt-oss-120b|0', 'cuda|docinject|47_Sum_reduction_over_a_dimension|openai/gpt-oss-120b|1', 'cuda|docinject|47_Sum_reduction_over_a_dimension|openai/gpt-oss-120b|2', 'cuda|docinject|50_conv_standard_2D__square_input__square_kernel|openai/gpt-oss-120b|2', 'cuda|docinject|50_conv_standard_2D__square_input__square_kernel|openai/gpt-oss-120b|3', 'cuda|docinject|50_conv_standard_2D__square_input__square_kernel|openai/gpt-oss-120b|4', 'cuda|docinject|51_Argmax_over_a_dimension|openai/gpt-oss-120b|1', 'cuda|docinject|51_Argmax_over_a_dimension|openai/gpt-oss-120b|4', 'cuda|docinject|97_ScaledDotProductAttention|openai/gpt-oss-120b|1', 'triton|docinject|17_Matmul_with_transposed_B|Qwen/Qwen3-Coder-30B-A3B-Instruct|4', 'triton|docinject|17_Matmul_with_transposed_B|openai/gpt-oss-120b|0', 'triton|docinject|17_Matmul_with_transposed_B|openai/gpt-oss-120b|1', 'triton|docinject|17_Matmul_with_transposed_B|openai/gpt-oss-120b|3', 'triton|docinject|19_ReLU|Qwen/Qwen3-Coder-30B-A3B-Instruct|0', 'triton|docinject|19_ReLU|Qwen/Qwen3-Coder-30B-A3B-Instruct|1', 'triton|docinject|19_ReLU|Qwen/Qwen3-Coder-30B-A3B-Instruct|2', 'triton|docinject|19_ReLU|Qwen/Qwen3-Coder-30B-A3B-Instruct|3', 'triton|docinject|19_ReLU|Qwen/Qwen3-Coder-30B-A3B-Instruct|4', 'triton|docinject|19_ReLU|openai/gpt-oss-120b|0', 'triton|docinject|19_ReLU|openai/gpt-oss-120b|1', 'triton|docinject|19_ReLU|openai/gpt-oss-120b|3', 'triton|docinject|19_ReLU|openai/gpt-oss-120b|4', 'triton|docinject|1_Square_matrix_multiplication_|Qwen/Qwen3-Coder-30B-A3B-Instruct|0', 'triton|docinject|1_Square_matrix_multiplication_|openai/gpt-oss-120b|0', 'triton|docinject|1_Square_matrix_multiplication_|openai/gpt-oss-120b|1', 'triton|docinject|1_Square_matrix_multiplication_|openai/gpt-oss-120b|2', 'triton|docinject|1_Square_matrix_multiplication_|openai/gpt-oss-120b|4', 'triton|docinject|35_GroupNorm_|openai/gpt-oss-120b|3', 'triton|docinject|35_GroupNorm_|openai/gpt-oss-120b|4', 'triton|docinject|3_Batched_matrix_multiplication|openai/gpt-oss-120b|1', 'triton|docinject|42_Max_Pooling_2D|openai/gpt-oss-120b|2', 'triton|docinject|42_Max_Pooling_2D|openai/gpt-oss-120b|3', 'triton|docinject|47_Sum_reduction_over_a_dimension|Qwen/Qwen3-Coder-30B-A3B-Instruct|3', 'triton|docinject|47_Sum_reduction_over_a_dimension|openai/gpt-oss-120b|0', 'triton|docinject|47_Sum_reduction_over_a_dimension|openai/gpt-oss-120b|4', 'triton|docinject|50_conv_standard_2D__square_input__square_kernel|Qwen/Qwen3-Coder-30B-A3B-Instruct|1', 'triton|docinject|50_conv_standard_2D__square_input__square_kernel|Qwen/Qwen3-Coder-30B-A3B-Instruct|4', 'triton|docinject|50_conv_standard_2D__square_input__square_kernel|openai/gpt-oss-120b|0', 'triton|docinject|50_conv_standard_2D__square_input__square_kernel|openai/gpt-oss-120b|4', 'triton|docinject|57_conv_transposed_2D__square_input__square_kernel|openai/gpt-oss-120b|4', 'triton|docinject|97_ScaledDotProductAttention|openai/gpt-oss-120b|1', 'tilelang|docinject|17_Matmul_with_transposed_B|openai/gpt-oss-120b|0', 'tilelang|docinject|17_Matmul_with_transposed_B|openai/gpt-oss-120b|2', 'tilelang|docinject|19_ReLU|Qwen/Qwen3-Coder-30B-A3B-Instruct|0', 'tilelang|docinject|19_ReLU|Qwen/Qwen3-Coder-30B-A3B-Instruct|1', 'tilelang|docinject|19_ReLU|Qwen/Qwen3-Coder-30B-A3B-Instruct|2', 'tilelang|docinject|19_ReLU|Qwen/Qwen3-Coder-30B-A3B-Instruct|3', 'tilelang|docinject|19_ReLU|Qwen/Qwen3-Coder-30B-A3B-Instruct|4', 'tilelang|docinject|19_ReLU|openai/gpt-oss-120b|0', 'tilelang|docinject|19_ReLU|openai/gpt-oss-120b|1', 'tilelang|docinject|19_ReLU|openai/gpt-oss-120b|2', 'tilelang|docinject|1_Square_matrix_multiplication_|Qwen/Qwen3-Coder-30B-A3B-Instruct|0', 'tilelang|docinject|1_Square_matrix_multiplication_|Qwen/Qwen3-Coder-30B-A3B-Instruct|1', 'tilelang|docinject|1_Square_matrix_multiplication_|Qwen/Qwen3-Coder-30B-A3B-Instruct|2', 'tilelang|docinject|1_Square_matrix_multiplication_|Qwen/Qwen3-Coder-30B-A3B-Instruct|3', 'tilelang|docinject|1_Square_matrix_multiplication_|Qwen/Qwen3-Coder-30B-A3B-Instruct|4', 'tilelang|docinject|1_Square_matrix_multiplication_|openai/gpt-oss-120b|0', 'tilelang|docinject|1_Square_matrix_multiplication_|openai/gpt-oss-120b|1', 'tilelang|docinject|1_Square_matrix_multiplication_|openai/gpt-oss-120b|2', 'tilelang|docinject|1_Square_matrix_multiplication_|openai/gpt-oss-120b|3', 'tilelang|docinject|1_Square_matrix_multiplication_|openai/gpt-oss-120b|4', 'tilelang|docinject|26_GELU_|Qwen/Qwen3-Coder-30B-A3B-Instruct|0', 'tilelang|docinject|26_GELU_|Qwen/Qwen3-Coder-30B-A3B-Instruct|1', 'tilelang|docinject|26_GELU_|Qwen/Qwen3-Coder-30B-A3B-Instruct|3', 'tilelang|docinject|26_GELU_|Qwen/Qwen3-Coder-30B-A3B-Instruct|4', 'tilelang|docinject|26_GELU_|openai/gpt-oss-120b|0', 'tilelang|docinject|26_GELU_|openai/gpt-oss-120b|1', 'tilelang|docinject|26_GELU_|openai/gpt-oss-120b|2', 'tilelang|docinject|26_GELU_|openai/gpt-oss-120b|4', 'tilelang|docinject|35_GroupNorm_|Qwen/Qwen3-Coder-30B-A3B-Instruct|0', 'tilelang|docinject|35_GroupNorm_|openai/gpt-oss-120b|0', 'tilelang|docinject|35_GroupNorm_|openai/gpt-oss-120b|1', 'tilelang|docinject|35_GroupNorm_|openai/gpt-oss-120b|3', 'tilelang|docinject|35_GroupNorm_|openai/gpt-oss-120b|4', 'tilelang|docinject|3_Batched_matrix_multiplication|Qwen/Qwen3-Coder-30B-A3B-Instruct|0', 'tilelang|docinject|3_Batched_matrix_multiplication|Qwen/Qwen3-Coder-30B-A3B-Instruct|3', 'tilelang|docinject|3_Batched_matrix_multiplication|openai/gpt-oss-120b|0', 'tilelang|docinject|3_Batched_matrix_multiplication|openai/gpt-oss-120b|1', 'tilelang|docinject|3_Batched_matrix_multiplication|openai/gpt-oss-120b|2', 'tilelang|docinject|3_Batched_matrix_multiplication|openai/gpt-oss-120b|3', 'tilelang|docinject|3_Batched_matrix_multiplication|openai/gpt-oss-120b|4', 'tilelang|docinject|40_LayerNorm|openai/gpt-oss-120b|0', 'tilelang|docinject|40_LayerNorm|openai/gpt-oss-120b|1', 'tilelang|docinject|40_LayerNorm|openai/gpt-oss-120b|2', 'tilelang|docinject|40_LayerNorm|openai/gpt-oss-120b|4', 'tilelang|docinject|82_conv_depthwise_2D_square_input_square_kernel|openai/gpt-oss-120b|2', 'tilelang|docinject|89_cumsum|openai/gpt-oss-120b|3']
+[init-a100-docinject] wrote results/eval/multiturn_state_a100_docinject.json (680 chains, all at turn 1)
+[20260826T025320] === multiturn_run_a100_expand.sh starting, max_turns=10 ===
+[20260826T025320] --- driving cycle 1 ---
+[20260826T075341] pushing checkpoint (turn ~1) to results-a100-phase2-expand
+fatal: pathspec 'scripts/phase2_expand_*.py' did not match any files
+[20260826T075341] nothing new to commit at this checkpoint
+remote: 
+remote: Create a pull request for 'results-a100-phase2-expand' on GitHub by visiting:        
+remote:      https://github.com/YonginKwon/kernel_exp/pull/new/results-a100-phase2-expand        
+remote: 
+To https://github.com/YonginKwon/kernel_exp.git
+ * [new branch]      HEAD -> results-a100-phase2-expand
+/home/jun/kernel-lang-2x2/kernel_exp/results/eval/multiturn_state_a100_tilelang.json: 0/320 terminated
+/home/jun/kernel-lang-2x2/kernel_exp/results/eval/multiturn_state_a100_docinject.json: 0/680 terminated
+[20260826T075343] --- driving cycle 2 ---
+[20260826T124303] pushing checkpoint (turn ~2) to results-a100-phase2-expand
+fatal: pathspec 'scripts/phase2_expand_*.py' did not match any files
+[20260826T124303] nothing new to commit at this checkpoint
+Everything up-to-date
+/home/jun/kernel-lang-2x2/kernel_exp/results/eval/multiturn_state_a100_tilelang.json: 0/320 terminated
+/home/jun/kernel-lang-2x2/kernel_exp/results/eval/multiturn_state_a100_docinject.json: 0/680 terminated
+[20260826T124304] --- driving cycle 3 ---
+[20260826T174823] pushing checkpoint (turn ~3) to results-a100-phase2-expand
+fatal: pathspec 'scripts/phase2_expand_*.py' did not match any files
+[20260826T174823] nothing new to commit at this checkpoint
+Everything up-to-date
+/home/jun/kernel-lang-2x2/kernel_exp/results/eval/multiturn_state_a100_tilelang.json: 0/320 terminated
+/home/jun/kernel-lang-2x2/kernel_exp/results/eval/multiturn_state_a100_docinject.json: 0/680 terminated
+[20260826T174824] --- driving cycle 4 ---
+[20260826T223724] pushing checkpoint (turn ~4) to results-a100-phase2-expand
+fatal: pathspec 'scripts/phase2_expand_*.py' did not match any files
+[20260826T223724] nothing new to commit at this checkpoint
+Everything up-to-date
+/home/jun/kernel-lang-2x2/kernel_exp/results/eval/multiturn_state_a100_tilelang.json: 3/320 terminated
+/home/jun/kernel-lang-2x2/kernel_exp/results/eval/multiturn_state_a100_docinject.json: 20/680 terminated
+[20260826T223725] --- driving cycle 5 ---
+[20260827T032724] pushing checkpoint (turn ~5) to results-a100-phase2-expand
+fatal: pathspec 'scripts/phase2_expand_*.py' did not match any files
+[20260827T032724] nothing new to commit at this checkpoint
+Everything up-to-date
+/home/jun/kernel-lang-2x2/kernel_exp/results/eval/multiturn_state_a100_tilelang.json: 5/320 terminated
+/home/jun/kernel-lang-2x2/kernel_exp/results/eval/multiturn_state_a100_docinject.json: 28/680 terminated
+[20260827T032726] --- driving cycle 6 ---
+[20260827T082032] pushing checkpoint (turn ~6) to results-a100-phase2-expand
+fatal: pathspec 'scripts/phase2_expand_*.py' did not match any files
+[20260827T082032] nothing new to commit at this checkpoint
+Everything up-to-date
+/home/jun/kernel-lang-2x2/kernel_exp/results/eval/multiturn_state_a100_tilelang.json: 12/320 terminated
+/home/jun/kernel-lang-2x2/kernel_exp/results/eval/multiturn_state_a100_docinject.json: 42/680 terminated
+[20260827T082033] --- driving cycle 7 ---
+[20260827T130027] pushing checkpoint (turn ~7) to results-a100-phase2-expand
+fatal: pathspec 'scripts/phase2_expand_*.py' did not match any files
+[20260827T130027] nothing new to commit at this checkpoint
+Everything up-to-date
+/home/jun/kernel-lang-2x2/kernel_exp/results/eval/multiturn_state_a100_tilelang.json: 16/320 terminated
+/home/jun/kernel-lang-2x2/kernel_exp/results/eval/multiturn_state_a100_docinject.json: 55/680 terminated
+[20260827T130028] --- driving cycle 8 ---
+[20260827T174458] pushing checkpoint (turn ~8) to results-a100-phase2-expand
+fatal: pathspec 'scripts/phase2_expand_*.py' did not match any files
+[20260827T174458] nothing new to commit at this checkpoint
+Everything up-to-date
+/home/jun/kernel-lang-2x2/kernel_exp/results/eval/multiturn_state_a100_tilelang.json: 18/320 terminated
+/home/jun/kernel-lang-2x2/kernel_exp/results/eval/multiturn_state_a100_docinject.json: 65/680 terminated
+[20260827T174459] --- driving cycle 9 ---
+[20260827T221737] pushing checkpoint (turn ~9) to results-a100-phase2-expand
+fatal: pathspec 'scripts/phase2_expand_*.py' did not match any files
+[20260827T221738] nothing new to commit at this checkpoint
+Everything up-to-date
+/home/jun/kernel-lang-2x2/kernel_exp/results/eval/multiturn_state_a100_tilelang.json: 319/320 terminated
+/home/jun/kernel-lang-2x2/kernel_exp/results/eval/multiturn_state_a100_docinject.json: 605/680 terminated
+[20260827T221739] --- driving cycle 10 ---
+[20260827T233944] pushing checkpoint (turn ~10) to results-a100-phase2-expand
+fatal: pathspec 'scripts/phase2_expand_*.py' did not match any files
+[20260827T233944] nothing new to commit at this checkpoint
+Everything up-to-date
+/home/jun/kernel-lang-2x2/kernel_exp/results/eval/multiturn_state_a100_tilelang.json: 320/320 terminated
+/home/jun/kernel-lang-2x2/kernel_exp/results/eval/multiturn_state_a100_docinject.json: 670/680 terminated
+[20260827T233946] === multiturn_run_a100_expand.sh finished after 10 driver iteration(s) ===

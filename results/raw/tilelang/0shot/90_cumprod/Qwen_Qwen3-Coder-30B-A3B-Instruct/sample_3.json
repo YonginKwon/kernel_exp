@@ -1,0 +1,39 @@
+{
+  "task": "90_cumprod",
+  "task_family": "cumulative_scan",
+  "language": "tilelang",
+  "condition": "0shot",
+  "sample_index": 3,
+  "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+  "base_url": "http://localhost:8001/v1",
+  "hf_revision": "b2cff646eb4bb1d68355c01b18ae02e7cf42d120",
+  "vllm_version": "0.10.1",
+  "tensor_parallel_size": 1,
+  "temperature": 0.8,
+  "max_tokens": 8192,
+  "seed": 43003,
+  "timestamp": "2026-08-26T00:24:05+0900",
+  "prompt_sha256": "1fb71473d0f1d412a5f3e49c69fc3ed2d96263b0d112d30aa9b3316cfc33a741",
+  "prompt": "You are given a PyTorch reference implementation of a neural network operator.\nWrite a functionally equivalent GPU kernel in TileLang.\n\nRequirements:\n- All tensor inputs and outputs are float16 (fp16). Accumulation precision is\n  your choice unless the reference dictates otherwise.\n- Target GPU: NVIDIA RTX PRO 6000 Blackwell (compute capability 12.0).\n- Your kernel must be a drop-in replacement: same input shapes, same output\n  shapes and dtype as the reference.\n- Output ONLY the complete TileLang solution inside a single code block.\n  No explanation outside the code block.\n\nWrite a TileLang kernel (tilelang.jit / T.prim_func). Provide the full\nPython file defining ModelNew that calls your TileLang kernel.\n\nReference implementation:\n```python\nimport torch\nimport torch.nn as nn\n\nclass Model(nn.Module):\n    \"\"\"\n    A model that performs a cumulative product operation along a specified dimension.\n\n    Parameters:\n        dim (int): The dimension along which to perform the cumulative product operation.\n    \"\"\"\n\n    def __init__(self, dim):\n        \"\"\"\n        Initialize the CumulativeProductModel.\n\n        Args:\n            dim (int): The dimension along which to perform the cumulative product.\n        \"\"\"\n        super(Model, self).__init__()\n        self.dim = dim\n\n    def forward(self, x):\n        \"\"\"\n        Forward pass, computing the cumulative product along the specified dimension.\n\n        Args:\n            x (torch.Tensor): Input tensor of shape (batch_size, *input_shape).\n\n        Returns:\n            torch.Tensor: Tensor of the same shape as `x` after applying cumulative product along `dim`.\n        \"\"\"\n        return torch.cumprod(x, dim=self.dim)\n\n# Define input dimensions and parameters\nbatch_size = 32768\ninput_shape = (32768,)\ndim = 1\n\ndef get_inputs():\n    return [torch.rand(batch_size, *input_shape)]\n\ndef get_init_inputs():\n    return [dim]\n\n```\n",
+  "env": {
+    "torch_version": "2.5.1+cu121",
+    "cuda_version": "12.1",
+    "gpu_name": "NVIDIA A100 80GB PCIe",
+    "compute_capability": [
+      8,
+      0
+    ],
+    "driver_version": "535.309.01\n535.309.01"
+  },
+  "response_raw": "```python\nimport torch\nimport tilelang as T\nfrom tilelang import PrimFunc, decl_buffer, Tensor, Float, Int, index, attr, for_, if_, let, call_extern\nimport numpy as np\n\nclass Model(nn.Module):\n    def __init__(self, dim):\n        super(Model, self).__init__()\n        self.dim = dim\n\n    def forward(self, x):\n        return torch.cumprod(x, dim=self.dim)\n\n@T.prim_func\ndef cumprod_kernel(\n    A: T.Buffer((32768, 32768), \"float16\"),\n    B: T.Buffer((32768, 32768), \"float16\")\n):\n    # Define indices\n    i = T.axis.spatial(32768, 0)\n    j = T.axis.spatial(32768, 0)\n    \n    # Initialize accumulator\n    acc = T.allocate([1], \"float32\", \"local\")\n    acc[0] = T.float32(1.0)\n    \n    # Perform cumulative product along dimension 1\n    with T.attr(T.axis.spatial(1, 0), \"loop_scope\", \"cumprod\"):\n        # Iterate over the cumulative dimension\n        for k in range(32768):\n            if k <= j:\n                # Accumulate product\n                acc[0] = acc[0] * T.cast(A[i, k], \"float32\")\n            else:\n                break\n        \n        # Store result\n        B[i, j] = T.cast(acc[0], \"float16\")\n\n# Create the actual kernel wrapper\ndef create_cumprod_kernel():\n    return cumprod_kernel\n\ndef get_inputs():\n    return [torch.rand(32768, 32768, dtype=torch.float16)]\n\ndef get_init_inputs():\n    return [1]\n```",
+  "response_finish_reason": "stop",
+  "usage": {
+    "completion_tokens": 403,
+    "prompt_tokens": 418,
+    "total_tokens": 821,
+    "completion_tokens_details": null,
+    "prompt_tokens_details": null
+  },
+  "parsed_code": "import torch\nimport tilelang as T\nfrom tilelang import PrimFunc, decl_buffer, Tensor, Float, Int, index, attr, for_, if_, let, call_extern\nimport numpy as np\n\nclass Model(nn.Module):\n    def __init__(self, dim):\n        super(Model, self).__init__()\n        self.dim = dim\n\n    def forward(self, x):\n        return torch.cumprod(x, dim=self.dim)\n\n@T.prim_func\ndef cumprod_kernel(\n    A: T.Buffer((32768, 32768), \"float16\"),\n    B: T.Buffer((32768, 32768), \"float16\")\n):\n    # Define indices\n    i = T.axis.spatial(32768, 0)\n    j = T.axis.spatial(32768, 0)\n    \n    # Initialize accumulator\n    acc = T.allocate([1], \"float32\", \"local\")\n    acc[0] = T.float32(1.0)\n    \n    # Perform cumulative product along dimension 1\n    with T.attr(T.axis.spatial(1, 0), \"loop_scope\", \"cumprod\"):\n        # Iterate over the cumulative dimension\n        for k in range(32768):\n            if k <= j:\n                # Accumulate product\n                acc[0] = acc[0] * T.cast(A[i, k], \"float32\")\n            else:\n                break\n        \n        # Store result\n        B[i, j] = T.cast(acc[0], \"float16\")\n\n# Create the actual kernel wrapper\ndef create_cumprod_kernel():\n    return cumprod_kernel\n\ndef get_inputs():\n    return [torch.rand(32768, 32768, dtype=torch.float16)]\n\ndef get_init_inputs():\n    return [1]\n",
+  "status": "generated"
+}

@@ -1,0 +1,41 @@
+{
+  "chain_id": "tilelang|0shot|100_HingeLoss|Qwen/Qwen3-Coder-30B-A3B-Instruct|3",
+  "turn": 7,
+  "phase": "repair",
+  "task": "100_HingeLoss",
+  "language": "tilelang",
+  "condition": "0shot",
+  "sample_index": 3,
+  "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+  "base_url": "http://localhost:8001/v1",
+  "hf_revision": "b2cff646eb4bb1d68355c01b18ae02e7cf42d120",
+  "vllm_version": "0.10.1",
+  "tensor_parallel_size": 1,
+  "temperature": 0.8,
+  "max_tokens": 8192,
+  "seed": 245668985,
+  "timestamp": "2026-08-27T04:24:02+0900",
+  "prompt_sha256": "3ab2355f0b8d60ab5d0b431f0609337be21e71b7884888730a2e7a979c946a2d",
+  "prompt": "You are given a PyTorch reference implementation of a neural network operator.\nWrite a functionally equivalent GPU kernel in TileLang.\n\nRequirements:\n- All tensor inputs and outputs are float16 (fp16). Accumulation precision is\n  your choice unless the reference dictates otherwise.\n- Target GPU: NVIDIA RTX PRO 6000 Blackwell (compute capability 12.0).\n- Your kernel must be a drop-in replacement: same input shapes, same output\n  shapes and dtype as the reference.\n- Output ONLY the complete TileLang solution inside a single code block.\n  No explanation outside the code block.\n\nWrite a TileLang kernel (tilelang.jit / T.prim_func). Provide the full\nPython file defining ModelNew that calls your TileLang kernel.\n\nReference implementation:\n```python\nimport torch\nimport torch.nn as nn\n\nclass Model(nn.Module):\n    \"\"\"\n    A model that computes Hinge Loss for binary classification tasks.\n\n    Parameters:\n        None\n    \"\"\"\n    def __init__(self):\n        super(Model, self).__init__()\n\n    def forward(self, predictions, targets):\n        return torch.mean(torch.clamp(1 - predictions * targets, min=0))\n\nbatch_size = 32768\ninput_shape = (32768,)\ndim = 1\n\ndef get_inputs():\n    return [torch.rand(batch_size, *input_shape), torch.randint(0, 2, (batch_size,)).float() * 2 - 1]\n\ndef get_init_inputs():\n    return []\n```\n\nYour previous solution:\n```\nimport torch\nimport tilelang as T\nimport numpy as np\n\n@T.prim_func\ndef hinge_loss_kernel(\n    predictions: T.Buffer((32768,), \"float16\"),\n    targets: T.Buffer((32768,), \"float16\"),\n    output: T.Buffer((1,), \"float16\")\n):\n    # Initialize accumulator with zero\n    acc = T.Buffer((1,), \"float32\")\n    acc[0] = T.float32(0.0)\n    \n    # Define the reduction loop\n    for i in T.serial(32768):\n        # Compute predictions[i] * targets[i]\n        prod = predictions[i] * targets[i]\n        \n        # Compute 1 - (predictions[i] * targets[i])\n        temp = T.float32(1.0) - T.float32(prod)\n        \n        # Clamp to minimum 0\n        clamped = T.max(temp, T.float32(0.0))\n        \n        # Accumulate\n        acc[0] += clamped\n    \n    # Divide by batch size (32768) to compute mean\n    output[0] = T.float16(acc[0] / T.float32(32768))\n\nclass ModelNew(torch.nn.Module):\n    def __init__(self):\n        super(ModelNew, self).__init__()\n        \n    def forward(self, predictions, targets):\n        # Create output tensor\n        output = torch.empty(1, dtype=torch.float16, device=predictions.device)\n        \n        # Launch kernel\n        hinge_loss_kernel(\n            predictions,\n            targets,\n            output\n        )\n        \n        return output.item()\n\n# Test function\ndef get_inputs():\n    return [torch.rand(32768, dtype=torch.float16), \n            torch.randint(0, 2, (32768,), dtype=torch.float16) * 2 - 1]\n\ndef get_init_inputs():\n    return []\n\n```\n\nYour previous solution failed to compile with the following error:\n\nmodule 'tilelang' has no attribute 'prim_func'\n\nProvide the corrected complete solution in a single code block.\n",
+  "env": {
+    "torch_version": "2.5.1+cu121",
+    "cuda_version": "12.1",
+    "gpu_name": "NVIDIA A100 80GB PCIe",
+    "compute_capability": [
+      8,
+      0
+    ],
+    "driver_version": "535.309.01\n535.309.01"
+  },
+  "response_raw": "```python\nimport torch\nimport tilelang as T\nimport numpy as np\n\n@T.prim_func\ndef hinge_loss_kernel(\n    predictions: T.Buffer((32768,), \"float16\"),\n    targets: T.Buffer((32768,), \"float16\"),\n    output: T.Buffer((1,), \"float16\")\n):\n    # Initialize accumulator with zero\n    acc = T.Buffer((1,), \"float32\")\n    acc[0] = T.float32(0.0)\n    \n    # Define the reduction loop\n    for i in T.serial(32768):\n        # Compute predictions[i] * targets[i]\n        prod = predictions[i] * targets[i]\n        \n        # Compute 1 - (predictions[i] * targets[i])\n        temp = T.float32(1.0) - T.float32(prod)\n        \n        # Clamp to minimum 0\n        clamped = T.max(temp, T.float32(0.0))\n        \n        # Accumulate\n        acc[0] += clamped\n    \n    # Divide by batch size (32768) to compute mean\n    output[0] = T.float16(acc[0] / T.float32(32768))\n\nclass ModelNew(torch.nn.Module):\n    def __init__(self):\n        super(ModelNew, self).__init__()\n        \n    def forward(self, predictions, targets):\n        # Create output tensor\n        output = torch.empty(1, dtype=torch.float16, device=predictions.device)\n        \n        # Launch kernel\n        hinge_loss_kernel(\n            predictions,\n            targets,\n            output\n        )\n        \n        return output.item()\n\n# Test function\ndef get_inputs():\n    return [torch.rand(32768, dtype=torch.float16), \n            torch.randint(0, 2, (32768,), dtype=torch.float16) * 2 - 1]\n\ndef get_init_inputs():\n    return []\n```",
+  "response_finish_reason": "stop",
+  "usage": {
+    "completion_tokens": 423,
+    "prompt_tokens": 786,
+    "total_tokens": 1209,
+    "completion_tokens_details": null,
+    "prompt_tokens_details": null
+  },
+  "parsed_code": "import torch\nimport tilelang as T\nimport numpy as np\n\n@T.prim_func\ndef hinge_loss_kernel(\n    predictions: T.Buffer((32768,), \"float16\"),\n    targets: T.Buffer((32768,), \"float16\"),\n    output: T.Buffer((1,), \"float16\")\n):\n    # Initialize accumulator with zero\n    acc = T.Buffer((1,), \"float32\")\n    acc[0] = T.float32(0.0)\n    \n    # Define the reduction loop\n    for i in T.serial(32768):\n        # Compute predictions[i] * targets[i]\n        prod = predictions[i] * targets[i]\n        \n        # Compute 1 - (predictions[i] * targets[i])\n        temp = T.float32(1.0) - T.float32(prod)\n        \n        # Clamp to minimum 0\n        clamped = T.max(temp, T.float32(0.0))\n        \n        # Accumulate\n        acc[0] += clamped\n    \n    # Divide by batch size (32768) to compute mean\n    output[0] = T.float16(acc[0] / T.float32(32768))\n\nclass ModelNew(torch.nn.Module):\n    def __init__(self):\n        super(ModelNew, self).__init__()\n        \n    def forward(self, predictions, targets):\n        # Create output tensor\n        output = torch.empty(1, dtype=torch.float16, device=predictions.device)\n        \n        # Launch kernel\n        hinge_loss_kernel(\n            predictions,\n            targets,\n            output\n        )\n        \n        return output.item()\n\n# Test function\ndef get_inputs():\n    return [torch.rand(32768, dtype=torch.float16), \n            torch.randint(0, 2, (32768,), dtype=torch.float16) * 2 - 1]\n\ndef get_init_inputs():\n    return []\n",
+  "status": "generated"
+}

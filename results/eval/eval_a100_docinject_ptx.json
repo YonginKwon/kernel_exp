@@ -1,0 +1,3159 @@
+{
+  "summary": {
+    "ptx": {
+      "n": 200,
+      "generated": 182,
+      "compiled": 84,
+      "correct": 0
+    }
+  },
+  "records": [
+    {
+      "path": "ptx/docinject/17_Matmul_with_transposed_B/Qwen_Qwen3-Coder-30B-A3B-Instruct/sample_0.json",
+      "task": "17_Matmul_with_transposed_B",
+      "task_family": "matmul",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "sample_index": 0,
+      "gen_status": "generated",
+      "compiled": false,
+      "correctness": false,
+      "metadata": {
+        "compilation_error_name": "NameError",
+        "compilation_error": "name 'nn' is not defined"
+      }
+    },
+    {
+      "path": "ptx/docinject/17_Matmul_with_transposed_B/Qwen_Qwen3-Coder-30B-A3B-Instruct/sample_1.json",
+      "task": "17_Matmul_with_transposed_B",
+      "task_family": "matmul",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "sample_index": 1,
+      "gen_status": "generated",
+      "compiled": false,
+      "correctness": false,
+      "metadata": {
+        "compilation_error_name": "NameError",
+        "compilation_error": "name 'nn' is not defined"
+      }
+    },
+    {
+      "path": "ptx/docinject/17_Matmul_with_transposed_B/Qwen_Qwen3-Coder-30B-A3B-Instruct/sample_2.json",
+      "task": "17_Matmul_with_transposed_B",
+      "task_family": "matmul",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "sample_index": 2,
+      "gen_status": "truncated",
+      "compiled": false,
+      "correctness": false,
+      "eval_skipped_reason": "truncated"
+    },
+    {
+      "path": "ptx/docinject/17_Matmul_with_transposed_B/Qwen_Qwen3-Coder-30B-A3B-Instruct/sample_3.json",
+      "task": "17_Matmul_with_transposed_B",
+      "task_family": "matmul",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "sample_index": 3,
+      "gen_status": "generated",
+      "compiled": false,
+      "correctness": false,
+      "metadata": {
+        "compilation_error_name": "NameError",
+        "compilation_error": "name 'nn' is not defined"
+      }
+    },
+    {
+      "path": "ptx/docinject/17_Matmul_with_transposed_B/Qwen_Qwen3-Coder-30B-A3B-Instruct/sample_4.json",
+      "task": "17_Matmul_with_transposed_B",
+      "task_family": "matmul",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "sample_index": 4,
+      "gen_status": "generated",
+      "compiled": false,
+      "correctness": false,
+      "metadata": {
+        "compilation_error_name": "NameError",
+        "compilation_error": "name 'nn' is not defined"
+      }
+    },
+    {
+      "path": "ptx/docinject/17_Matmul_with_transposed_B/openai_gpt-oss-120b/sample_0.json",
+      "task": "17_Matmul_with_transposed_B",
+      "task_family": "matmul",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "openai/gpt-oss-120b",
+      "sample_index": 0,
+      "gen_status": "truncated",
+      "compiled": false,
+      "correctness": false,
+      "eval_skipped_reason": "truncated"
+    },
+    {
+      "path": "ptx/docinject/17_Matmul_with_transposed_B/openai_gpt-oss-120b/sample_1.json",
+      "task": "17_Matmul_with_transposed_B",
+      "task_family": "matmul",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "openai/gpt-oss-120b",
+      "sample_index": 1,
+      "gen_status": "generated",
+      "compiled": true,
+      "correctness": false,
+      "metadata": {
+        "runtime_error_name": "PTXCompileError",
+        "runtime_error": "ptxas /tmp/tmpuomt09pa/kernel.ptx, line 2; fatal   : Unsupported .version 8.7; current version is '8.5'\nptxas fatal   : Ptx assembly aborted due to errors\n"
+      }
+    },
+    {
+      "path": "ptx/docinject/17_Matmul_with_transposed_B/openai_gpt-oss-120b/sample_2.json",
+      "task": "17_Matmul_with_transposed_B",
+      "task_family": "matmul",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "openai/gpt-oss-120b",
+      "sample_index": 2,
+      "gen_status": "generated",
+      "compiled": true,
+      "correctness": false,
+      "metadata": {
+        "runtime_error_name": "PTXCompileError",
+        "runtime_error": "ptxas /tmp/tmp5_xa7u8a/kernel.ptx, line 2; fatal   : Unsupported .version 8.7; current version is '8.5'\nptxas fatal   : Ptx assembly aborted due to errors\n"
+      }
+    },
+    {
+      "path": "ptx/docinject/17_Matmul_with_transposed_B/openai_gpt-oss-120b/sample_3.json",
+      "task": "17_Matmul_with_transposed_B",
+      "task_family": "matmul",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "openai/gpt-oss-120b",
+      "sample_index": 3,
+      "gen_status": "generated",
+      "compiled": true,
+      "correctness": false,
+      "metadata": {
+        "runtime_error_name": "PTXCompileError",
+        "runtime_error": "ptxas /tmp/tmp7j2dkhww/kernel.ptx, line 2; fatal   : Unsupported .version 8.7; current version is '8.5'\nptxas fatal   : Ptx assembly aborted due to errors\n"
+      }
+    },
+    {
+      "path": "ptx/docinject/17_Matmul_with_transposed_B/openai_gpt-oss-120b/sample_4.json",
+      "task": "17_Matmul_with_transposed_B",
+      "task_family": "matmul",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "openai/gpt-oss-120b",
+      "sample_index": 4,
+      "gen_status": "generated",
+      "compiled": true,
+      "correctness": false,
+      "metadata": {
+        "runtime_error_name": "PTXCompileError",
+        "runtime_error": "ptxas /tmp/tmpywe0u723/kernel.ptx, line 2; fatal   : Unsupported .version 8.7; current version is '8.5'\nptxas fatal   : Ptx assembly aborted due to errors\n"
+      }
+    },
+    {
+      "path": "ptx/docinject/19_ReLU/Qwen_Qwen3-Coder-30B-A3B-Instruct/sample_0.json",
+      "task": "19_ReLU",
+      "task_family": "elementwise_activation",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "sample_index": 0,
+      "gen_status": "generated",
+      "compiled": false,
+      "correctness": false,
+      "metadata": {
+        "compilation_error_name": "NameError",
+        "compilation_error": "name 'nn' is not defined"
+      }
+    },
+    {
+      "path": "ptx/docinject/19_ReLU/Qwen_Qwen3-Coder-30B-A3B-Instruct/sample_1.json",
+      "task": "19_ReLU",
+      "task_family": "elementwise_activation",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "sample_index": 1,
+      "gen_status": "generated",
+      "compiled": false,
+      "correctness": false,
+      "metadata": {
+        "compilation_error_name": "NameError",
+        "compilation_error": "name 'nn' is not defined"
+      }
+    },
+    {
+      "path": "ptx/docinject/19_ReLU/Qwen_Qwen3-Coder-30B-A3B-Instruct/sample_2.json",
+      "task": "19_ReLU",
+      "task_family": "elementwise_activation",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "sample_index": 2,
+      "gen_status": "generated",
+      "compiled": false,
+      "correctness": false,
+      "metadata": {
+        "compilation_error_name": "NameError",
+        "compilation_error": "name 'nn' is not defined"
+      }
+    },
+    {
+      "path": "ptx/docinject/19_ReLU/Qwen_Qwen3-Coder-30B-A3B-Instruct/sample_3.json",
+      "task": "19_ReLU",
+      "task_family": "elementwise_activation",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "sample_index": 3,
+      "gen_status": "generated",
+      "compiled": false,
+      "correctness": false,
+      "metadata": {
+        "compilation_error_name": "NameError",
+        "compilation_error": "name 'nn' is not defined"
+      }
+    },
+    {
+      "path": "ptx/docinject/19_ReLU/Qwen_Qwen3-Coder-30B-A3B-Instruct/sample_4.json",
+      "task": "19_ReLU",
+      "task_family": "elementwise_activation",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "sample_index": 4,
+      "gen_status": "generated",
+      "compiled": false,
+      "correctness": false,
+      "metadata": {
+        "compilation_error_name": "NameError",
+        "compilation_error": "name 'nn' is not defined"
+      }
+    },
+    {
+      "path": "ptx/docinject/19_ReLU/openai_gpt-oss-120b/sample_0.json",
+      "task": "19_ReLU",
+      "task_family": "elementwise_activation",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "openai/gpt-oss-120b",
+      "sample_index": 0,
+      "gen_status": "generated",
+      "compiled": true,
+      "correctness": false,
+      "metadata": {
+        "runtime_error_name": "PTXCompileError",
+        "runtime_error": "ptxas /tmp/tmpi0ozgqps/kernel.ptx, line 2; fatal   : Unsupported .version 8.7; current version is '8.5'\nptxas fatal   : Ptx assembly aborted due to errors\n"
+      }
+    },
+    {
+      "path": "ptx/docinject/19_ReLU/openai_gpt-oss-120b/sample_1.json",
+      "task": "19_ReLU",
+      "task_family": "elementwise_activation",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "openai/gpt-oss-120b",
+      "sample_index": 1,
+      "gen_status": "generated",
+      "compiled": true,
+      "correctness": false,
+      "metadata": {
+        "runtime_error_name": "PTXCompileError",
+        "runtime_error": "ptxas /tmp/tmpzx0jwqx5/kernel.ptx, line 2; fatal   : Unsupported .version 8.7; current version is '8.5'\nptxas fatal   : Ptx assembly aborted due to errors\n"
+      }
+    },
+    {
+      "path": "ptx/docinject/19_ReLU/openai_gpt-oss-120b/sample_2.json",
+      "task": "19_ReLU",
+      "task_family": "elementwise_activation",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "openai/gpt-oss-120b",
+      "sample_index": 2,
+      "gen_status": "generated",
+      "compiled": true,
+      "correctness": false,
+      "metadata": {
+        "runtime_error_name": "PTXCompileError",
+        "runtime_error": "ptxas /tmp/tmp9thcmui7/kernel.ptx, line 2; fatal   : Unsupported .version 8.7; current version is '8.5'\nptxas fatal   : Ptx assembly aborted due to errors\n"
+      }
+    },
+    {
+      "path": "ptx/docinject/19_ReLU/openai_gpt-oss-120b/sample_3.json",
+      "task": "19_ReLU",
+      "task_family": "elementwise_activation",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "openai/gpt-oss-120b",
+      "sample_index": 3,
+      "gen_status": "generated",
+      "compiled": true,
+      "correctness": false,
+      "metadata": {
+        "runtime_error_name": "PTXCompileError",
+        "runtime_error": "ptxas /tmp/tmpgzayt3n7/kernel.ptx, line 2; fatal   : Unsupported .version 8.7; current version is '8.5'\nptxas fatal   : Ptx assembly aborted due to errors\n"
+      }
+    },
+    {
+      "path": "ptx/docinject/19_ReLU/openai_gpt-oss-120b/sample_4.json",
+      "task": "19_ReLU",
+      "task_family": "elementwise_activation",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "openai/gpt-oss-120b",
+      "sample_index": 4,
+      "gen_status": "generated",
+      "compiled": true,
+      "correctness": false,
+      "metadata": {
+        "runtime_error_name": "PTXCompileError",
+        "runtime_error": "ptxas /tmp/tmpjw1hp7xc/kernel.ptx, line 2; fatal   : Unsupported .version 8.7; current version is '8.5'\nptxas fatal   : Ptx assembly aborted due to errors\n"
+      }
+    },
+    {
+      "path": "ptx/docinject/1_Square_matrix_multiplication_/Qwen_Qwen3-Coder-30B-A3B-Instruct/sample_0.json",
+      "task": "1_Square_matrix_multiplication_",
+      "task_family": "matmul",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "sample_index": 0,
+      "gen_status": "generated",
+      "compiled": false,
+      "correctness": false,
+      "metadata": {
+        "compilation_error_name": "NameError",
+        "compilation_error": "name 'nn' is not defined"
+      }
+    },
+    {
+      "path": "ptx/docinject/1_Square_matrix_multiplication_/Qwen_Qwen3-Coder-30B-A3B-Instruct/sample_1.json",
+      "task": "1_Square_matrix_multiplication_",
+      "task_family": "matmul",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "sample_index": 1,
+      "gen_status": "generated",
+      "compiled": false,
+      "correctness": false,
+      "metadata": {
+        "compilation_error_name": "NameError",
+        "compilation_error": "name 'nn' is not defined"
+      }
+    },
+    {
+      "path": "ptx/docinject/1_Square_matrix_multiplication_/Qwen_Qwen3-Coder-30B-A3B-Instruct/sample_2.json",
+      "task": "1_Square_matrix_multiplication_",
+      "task_family": "matmul",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "sample_index": 2,
+      "gen_status": "truncated",
+      "compiled": false,
+      "correctness": false,
+      "eval_skipped_reason": "truncated"
+    },
+    {
+      "path": "ptx/docinject/1_Square_matrix_multiplication_/Qwen_Qwen3-Coder-30B-A3B-Instruct/sample_3.json",
+      "task": "1_Square_matrix_multiplication_",
+      "task_family": "matmul",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "sample_index": 3,
+      "gen_status": "generated",
+      "compiled": false,
+      "correctness": false,
+      "metadata": {
+        "compilation_error_name": "NameError",
+        "compilation_error": "name 'nn' is not defined"
+      }
+    },
+    {
+      "path": "ptx/docinject/1_Square_matrix_multiplication_/Qwen_Qwen3-Coder-30B-A3B-Instruct/sample_4.json",
+      "task": "1_Square_matrix_multiplication_",
+      "task_family": "matmul",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "sample_index": 4,
+      "gen_status": "generated",
+      "compiled": false,
+      "correctness": false,
+      "metadata": {
+        "compilation_error_name": "NameError",
+        "compilation_error": "name 'nn' is not defined"
+      }
+    },
+    {
+      "path": "ptx/docinject/1_Square_matrix_multiplication_/openai_gpt-oss-120b/sample_0.json",
+      "task": "1_Square_matrix_multiplication_",
+      "task_family": "matmul",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "openai/gpt-oss-120b",
+      "sample_index": 0,
+      "gen_status": "generated",
+      "compiled": true,
+      "correctness": false,
+      "metadata": {
+        "runtime_error_name": "PTXCompileError",
+        "runtime_error": "ptxas /tmp/tmp4csrjxok/kernel.ptx, line 2; fatal   : Unsupported .version 8.7; current version is '8.5'\nptxas fatal   : Ptx assembly aborted due to errors\n"
+      }
+    },
+    {
+      "path": "ptx/docinject/1_Square_matrix_multiplication_/openai_gpt-oss-120b/sample_1.json",
+      "task": "1_Square_matrix_multiplication_",
+      "task_family": "matmul",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "openai/gpt-oss-120b",
+      "sample_index": 1,
+      "gen_status": "generated",
+      "compiled": true,
+      "correctness": false,
+      "metadata": {
+        "runtime_error_name": "PTXCompileError",
+        "runtime_error": "ptxas /tmp/tmpibhygknb/kernel.ptx, line 2; fatal   : Unsupported .version 8.7; current version is '8.5'\nptxas fatal   : Ptx assembly aborted due to errors\n"
+      }
+    },
+    {
+      "path": "ptx/docinject/1_Square_matrix_multiplication_/openai_gpt-oss-120b/sample_2.json",
+      "task": "1_Square_matrix_multiplication_",
+      "task_family": "matmul",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "openai/gpt-oss-120b",
+      "sample_index": 2,
+      "gen_status": "generated",
+      "compiled": true,
+      "correctness": false,
+      "metadata": {
+        "runtime_error_name": "PTXCompileError",
+        "runtime_error": "ptxas /tmp/tmppmjlhdqq/kernel.ptx, line 2; fatal   : Unsupported .version 8.7; current version is '8.5'\nptxas fatal   : Ptx assembly aborted due to errors\n"
+      }
+    },
+    {
+      "path": "ptx/docinject/1_Square_matrix_multiplication_/openai_gpt-oss-120b/sample_3.json",
+      "task": "1_Square_matrix_multiplication_",
+      "task_family": "matmul",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "openai/gpt-oss-120b",
+      "sample_index": 3,
+      "gen_status": "generated",
+      "compiled": true,
+      "correctness": false,
+      "metadata": {
+        "runtime_error_name": "PTXCompileError",
+        "runtime_error": "ptxas /tmp/tmpy0_85xjm/kernel.ptx, line 2; fatal   : Unsupported .version 8.7; current version is '8.5'\nptxas fatal   : Ptx assembly aborted due to errors\n"
+      }
+    },
+    {
+      "path": "ptx/docinject/1_Square_matrix_multiplication_/openai_gpt-oss-120b/sample_4.json",
+      "task": "1_Square_matrix_multiplication_",
+      "task_family": "matmul",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "openai/gpt-oss-120b",
+      "sample_index": 4,
+      "gen_status": "generated",
+      "compiled": false,
+      "correctness": false,
+      "metadata": {
+        "compilation_error_name": "NameError",
+        "compilation_error": "name 'nn' is not defined"
+      }
+    },
+    {
+      "path": "ptx/docinject/23_Softmax/Qwen_Qwen3-Coder-30B-A3B-Instruct/sample_0.json",
+      "task": "23_Softmax",
+      "task_family": "elementwise_activation",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "sample_index": 0,
+      "gen_status": "generated",
+      "compiled": false,
+      "correctness": false,
+      "metadata": {
+        "compilation_error_name": "NameError",
+        "compilation_error": "name 'nn' is not defined"
+      }
+    },
+    {
+      "path": "ptx/docinject/23_Softmax/Qwen_Qwen3-Coder-30B-A3B-Instruct/sample_1.json",
+      "task": "23_Softmax",
+      "task_family": "elementwise_activation",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "sample_index": 1,
+      "gen_status": "generated",
+      "compiled": false,
+      "correctness": false,
+      "metadata": {
+        "compilation_error_name": "NameError",
+        "compilation_error": "name 'nn' is not defined"
+      }
+    },
+    {
+      "path": "ptx/docinject/23_Softmax/Qwen_Qwen3-Coder-30B-A3B-Instruct/sample_2.json",
+      "task": "23_Softmax",
+      "task_family": "elementwise_activation",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "sample_index": 2,
+      "gen_status": "generated",
+      "compiled": false,
+      "correctness": false,
+      "metadata": {
+        "compilation_error_name": "NameError",
+        "compilation_error": "name 'nn' is not defined"
+      }
+    },
+    {
+      "path": "ptx/docinject/23_Softmax/Qwen_Qwen3-Coder-30B-A3B-Instruct/sample_3.json",
+      "task": "23_Softmax",
+      "task_family": "elementwise_activation",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "sample_index": 3,
+      "gen_status": "generated",
+      "compiled": false,
+      "correctness": false,
+      "metadata": {
+        "compilation_error_name": "NameError",
+        "compilation_error": "name 'nn' is not defined"
+      }
+    },
+    {
+      "path": "ptx/docinject/23_Softmax/Qwen_Qwen3-Coder-30B-A3B-Instruct/sample_4.json",
+      "task": "23_Softmax",
+      "task_family": "elementwise_activation",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "sample_index": 4,
+      "gen_status": "generated",
+      "compiled": false,
+      "correctness": false,
+      "metadata": {
+        "compilation_error_name": "NameError",
+        "compilation_error": "name 'nn' is not defined"
+      }
+    },
+    {
+      "path": "ptx/docinject/23_Softmax/openai_gpt-oss-120b/sample_0.json",
+      "task": "23_Softmax",
+      "task_family": "elementwise_activation",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "openai/gpt-oss-120b",
+      "sample_index": 0,
+      "gen_status": "generated",
+      "compiled": true,
+      "correctness": false,
+      "metadata": {
+        "runtime_error_name": "PTXCompileError",
+        "runtime_error": "ptxas /tmp/tmpbgxkh4hy/kernel.ptx, line 2; fatal   : Unsupported .version 8.7; current version is '8.5'\nptxas fatal   : Ptx assembly aborted due to errors\n"
+      }
+    },
+    {
+      "path": "ptx/docinject/23_Softmax/openai_gpt-oss-120b/sample_1.json",
+      "task": "23_Softmax",
+      "task_family": "elementwise_activation",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "openai/gpt-oss-120b",
+      "sample_index": 1,
+      "gen_status": "generated",
+      "compiled": true,
+      "correctness": false,
+      "metadata": {
+        "runtime_error_name": "PTXCompileError",
+        "runtime_error": "ptxas /tmp/tmpy_v_ra_m/kernel.ptx, line 2; fatal   : Unsupported .version 8.7; current version is '8.5'\nptxas fatal   : Ptx assembly aborted due to errors\n"
+      }
+    },
+    {
+      "path": "ptx/docinject/23_Softmax/openai_gpt-oss-120b/sample_2.json",
+      "task": "23_Softmax",
+      "task_family": "elementwise_activation",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "openai/gpt-oss-120b",
+      "sample_index": 2,
+      "gen_status": "generated",
+      "compiled": true,
+      "correctness": false,
+      "metadata": {
+        "runtime_error_name": "PTXCompileError",
+        "runtime_error": "ptxas /tmp/tmp4ozrpqhb/kernel.ptx, line 2; fatal   : Unsupported .version 8.7; current version is '8.5'\nptxas fatal   : Ptx assembly aborted due to errors\n"
+      }
+    },
+    {
+      "path": "ptx/docinject/23_Softmax/openai_gpt-oss-120b/sample_3.json",
+      "task": "23_Softmax",
+      "task_family": "elementwise_activation",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "openai/gpt-oss-120b",
+      "sample_index": 3,
+      "gen_status": "generated",
+      "compiled": true,
+      "correctness": false,
+      "metadata": {
+        "runtime_error_name": "PTXCompileError",
+        "runtime_error": "ptxas /tmp/tmp3kexvr5d/kernel.ptx, line 2; fatal   : Unsupported .version 8.7; current version is '8.5'\nptxas fatal   : Ptx assembly aborted due to errors\n"
+      }
+    },
+    {
+      "path": "ptx/docinject/23_Softmax/openai_gpt-oss-120b/sample_4.json",
+      "task": "23_Softmax",
+      "task_family": "elementwise_activation",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "openai/gpt-oss-120b",
+      "sample_index": 4,
+      "gen_status": "generated",
+      "compiled": true,
+      "correctness": false,
+      "metadata": {
+        "runtime_error_name": "PTXCompileError",
+        "runtime_error": "ptxas /tmp/tmptgx22bod/kernel.ptx, line 2; fatal   : Unsupported .version 8.7; current version is '8.5'\nptxas fatal   : Ptx assembly aborted due to errors\n"
+      }
+    },
+    {
+      "path": "ptx/docinject/26_GELU_/Qwen_Qwen3-Coder-30B-A3B-Instruct/sample_0.json",
+      "task": "26_GELU_",
+      "task_family": "elementwise_activation",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "sample_index": 0,
+      "gen_status": "generated",
+      "compiled": false,
+      "correctness": false,
+      "metadata": {
+        "compilation_error_name": "NameError",
+        "compilation_error": "name 'nn' is not defined"
+      }
+    },
+    {
+      "path": "ptx/docinject/26_GELU_/Qwen_Qwen3-Coder-30B-A3B-Instruct/sample_1.json",
+      "task": "26_GELU_",
+      "task_family": "elementwise_activation",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "sample_index": 1,
+      "gen_status": "truncated",
+      "compiled": false,
+      "correctness": false,
+      "eval_skipped_reason": "truncated"
+    },
+    {
+      "path": "ptx/docinject/26_GELU_/Qwen_Qwen3-Coder-30B-A3B-Instruct/sample_2.json",
+      "task": "26_GELU_",
+      "task_family": "elementwise_activation",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "sample_index": 2,
+      "gen_status": "generated",
+      "compiled": false,
+      "correctness": false,
+      "metadata": {
+        "compilation_error_name": "NameError",
+        "compilation_error": "name 'nn' is not defined"
+      }
+    },
+    {
+      "path": "ptx/docinject/26_GELU_/Qwen_Qwen3-Coder-30B-A3B-Instruct/sample_3.json",
+      "task": "26_GELU_",
+      "task_family": "elementwise_activation",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "sample_index": 3,
+      "gen_status": "generated",
+      "compiled": false,
+      "correctness": false,
+      "metadata": {
+        "compilation_error_name": "NameError",
+        "compilation_error": "name 'nn' is not defined"
+      }
+    },
+    {
+      "path": "ptx/docinject/26_GELU_/Qwen_Qwen3-Coder-30B-A3B-Instruct/sample_4.json",
+      "task": "26_GELU_",
+      "task_family": "elementwise_activation",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "sample_index": 4,
+      "gen_status": "generated",
+      "compiled": false,
+      "correctness": false,
+      "metadata": {
+        "compilation_error_name": "NameError",
+        "compilation_error": "name 'nn' is not defined"
+      }
+    },
+    {
+      "path": "ptx/docinject/26_GELU_/openai_gpt-oss-120b/sample_0.json",
+      "task": "26_GELU_",
+      "task_family": "elementwise_activation",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "openai/gpt-oss-120b",
+      "sample_index": 0,
+      "gen_status": "generated",
+      "compiled": true,
+      "correctness": false,
+      "metadata": {
+        "runtime_error_name": "PTXCompileError",
+        "runtime_error": "ptxas /tmp/tmp5s3p4i8p/kernel.ptx, line 2; fatal   : Unsupported .version 8.7; current version is '8.5'\nptxas fatal   : Ptx assembly aborted due to errors\n"
+      }
+    },
+    {
+      "path": "ptx/docinject/26_GELU_/openai_gpt-oss-120b/sample_1.json",
+      "task": "26_GELU_",
+      "task_family": "elementwise_activation",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "openai/gpt-oss-120b",
+      "sample_index": 1,
+      "gen_status": "generated",
+      "compiled": true,
+      "correctness": false,
+      "metadata": {
+        "runtime_error_name": "PTXCompileError",
+        "runtime_error": "ptxas /tmp/tmpdhodxp0f/kernel.ptx, line 2; fatal   : Unsupported .version 8.7; current version is '8.5'\nptxas fatal   : Ptx assembly aborted due to errors\n"
+      }
+    },
+    {
+      "path": "ptx/docinject/26_GELU_/openai_gpt-oss-120b/sample_2.json",
+      "task": "26_GELU_",
+      "task_family": "elementwise_activation",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "openai/gpt-oss-120b",
+      "sample_index": 2,
+      "gen_status": "generated",
+      "compiled": true,
+      "correctness": false,
+      "metadata": {
+        "runtime_error_name": "PTXCompileError",
+        "runtime_error": "ptxas /tmp/tmpjviu1e9r/kernel.ptx, line 2; fatal   : Unsupported .version 8.7; current version is '8.5'\nptxas fatal   : Ptx assembly aborted due to errors\n"
+      }
+    },
+    {
+      "path": "ptx/docinject/26_GELU_/openai_gpt-oss-120b/sample_3.json",
+      "task": "26_GELU_",
+      "task_family": "elementwise_activation",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "openai/gpt-oss-120b",
+      "sample_index": 3,
+      "gen_status": "generated",
+      "compiled": false,
+      "correctness": false,
+      "metadata": {
+        "compilation_error_name": "NameError",
+        "compilation_error": "name 'nn' is not defined"
+      }
+    },
+    {
+      "path": "ptx/docinject/26_GELU_/openai_gpt-oss-120b/sample_4.json",
+      "task": "26_GELU_",
+      "task_family": "elementwise_activation",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "openai/gpt-oss-120b",
+      "sample_index": 4,
+      "gen_status": "generated",
+      "compiled": false,
+      "correctness": false,
+      "metadata": {
+        "compilation_error_name": "NameError",
+        "compilation_error": "name 'nn' is not defined"
+      }
+    },
+    {
+      "path": "ptx/docinject/35_GroupNorm_/Qwen_Qwen3-Coder-30B-A3B-Instruct/sample_0.json",
+      "task": "35_GroupNorm_",
+      "task_family": "normalization",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "sample_index": 0,
+      "gen_status": "generated",
+      "compiled": false,
+      "correctness": false,
+      "metadata": {
+        "compilation_error_name": "NameError",
+        "compilation_error": "name 'nn' is not defined"
+      }
+    },
+    {
+      "path": "ptx/docinject/35_GroupNorm_/Qwen_Qwen3-Coder-30B-A3B-Instruct/sample_1.json",
+      "task": "35_GroupNorm_",
+      "task_family": "normalization",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "sample_index": 1,
+      "gen_status": "generated",
+      "compiled": false,
+      "correctness": false,
+      "metadata": {
+        "compilation_error_name": "NameError",
+        "compilation_error": "name 'nn' is not defined"
+      }
+    },
+    {
+      "path": "ptx/docinject/35_GroupNorm_/Qwen_Qwen3-Coder-30B-A3B-Instruct/sample_2.json",
+      "task": "35_GroupNorm_",
+      "task_family": "normalization",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "sample_index": 2,
+      "gen_status": "generated",
+      "compiled": false,
+      "correctness": false,
+      "metadata": {
+        "compilation_error_name": "NameError",
+        "compilation_error": "name 'nn' is not defined"
+      }
+    },
+    {
+      "path": "ptx/docinject/35_GroupNorm_/Qwen_Qwen3-Coder-30B-A3B-Instruct/sample_3.json",
+      "task": "35_GroupNorm_",
+      "task_family": "normalization",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "sample_index": 3,
+      "gen_status": "generated",
+      "compiled": false,
+      "correctness": false,
+      "metadata": {
+        "compilation_error_name": "NameError",
+        "compilation_error": "name 'nn' is not defined"
+      }
+    },
+    {
+      "path": "ptx/docinject/35_GroupNorm_/Qwen_Qwen3-Coder-30B-A3B-Instruct/sample_4.json",
+      "task": "35_GroupNorm_",
+      "task_family": "normalization",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "sample_index": 4,
+      "gen_status": "generated",
+      "compiled": false,
+      "correctness": false,
+      "metadata": {
+        "compilation_error_name": "NameError",
+        "compilation_error": "name 'nn' is not defined"
+      }
+    },
+    {
+      "path": "ptx/docinject/35_GroupNorm_/openai_gpt-oss-120b/sample_0.json",
+      "task": "35_GroupNorm_",
+      "task_family": "normalization",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "openai/gpt-oss-120b",
+      "sample_index": 0,
+      "gen_status": "generated",
+      "compiled": true,
+      "correctness": false,
+      "metadata": {
+        "runtime_error_name": "PTXCompileError",
+        "runtime_error": "ptxas /tmp/tmpkvfhxeh1/kernel.ptx, line 2; fatal   : Unsupported .version 8.7; current version is '8.5'\nptxas fatal   : Ptx assembly aborted due to errors\n"
+      }
+    },
+    {
+      "path": "ptx/docinject/35_GroupNorm_/openai_gpt-oss-120b/sample_1.json",
+      "task": "35_GroupNorm_",
+      "task_family": "normalization",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "openai/gpt-oss-120b",
+      "sample_index": 1,
+      "gen_status": "generated",
+      "compiled": true,
+      "correctness": false,
+      "metadata": {
+        "runtime_error_name": "PTXCompileError",
+        "runtime_error": "ptxas /tmp/tmp4y4ea_1_/kernel.ptx, line 2; fatal   : Unsupported .version 8.7; current version is '8.5'\nptxas fatal   : Ptx assembly aborted due to errors\n"
+      }
+    },
+    {
+      "path": "ptx/docinject/35_GroupNorm_/openai_gpt-oss-120b/sample_2.json",
+      "task": "35_GroupNorm_",
+      "task_family": "normalization",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "openai/gpt-oss-120b",
+      "sample_index": 2,
+      "gen_status": "generated",
+      "compiled": true,
+      "correctness": false,
+      "metadata": {
+        "runtime_error_name": "PTXCompileError",
+        "runtime_error": "ptxas /tmp/tmpluez9usp/kernel.ptx, line 2; fatal   : Unsupported .version 8.7; current version is '8.5'\nptxas fatal   : Ptx assembly aborted due to errors\n"
+      }
+    },
+    {
+      "path": "ptx/docinject/35_GroupNorm_/openai_gpt-oss-120b/sample_3.json",
+      "task": "35_GroupNorm_",
+      "task_family": "normalization",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "openai/gpt-oss-120b",
+      "sample_index": 3,
+      "gen_status": "truncated",
+      "compiled": false,
+      "correctness": false,
+      "eval_skipped_reason": "truncated"
+    },
+    {
+      "path": "ptx/docinject/35_GroupNorm_/openai_gpt-oss-120b/sample_4.json",
+      "task": "35_GroupNorm_",
+      "task_family": "normalization",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "openai/gpt-oss-120b",
+      "sample_index": 4,
+      "gen_status": "generated",
+      "compiled": true,
+      "correctness": false,
+      "metadata": {
+        "runtime_error_name": "PTXCompileError",
+        "runtime_error": "ptxas /tmp/tmpmi6nbaaz/kernel.ptx, line 2; fatal   : Unsupported .version 8.7; current version is '8.5'\nptxas fatal   : Ptx assembly aborted due to errors\n"
+      }
+    },
+    {
+      "path": "ptx/docinject/36_RMSNorm_/Qwen_Qwen3-Coder-30B-A3B-Instruct/sample_0.json",
+      "task": "36_RMSNorm_",
+      "task_family": "normalization",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "sample_index": 0,
+      "gen_status": "generated",
+      "compiled": false,
+      "correctness": false,
+      "metadata": {
+        "compilation_error_name": "NameError",
+        "compilation_error": "name 'nn' is not defined"
+      }
+    },
+    {
+      "path": "ptx/docinject/36_RMSNorm_/Qwen_Qwen3-Coder-30B-A3B-Instruct/sample_1.json",
+      "task": "36_RMSNorm_",
+      "task_family": "normalization",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "sample_index": 1,
+      "gen_status": "generated",
+      "compiled": false,
+      "correctness": false,
+      "metadata": {
+        "compilation_error_name": "NameError",
+        "compilation_error": "name 'nn' is not defined"
+      }
+    },
+    {
+      "path": "ptx/docinject/36_RMSNorm_/Qwen_Qwen3-Coder-30B-A3B-Instruct/sample_2.json",
+      "task": "36_RMSNorm_",
+      "task_family": "normalization",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "sample_index": 2,
+      "gen_status": "generated",
+      "compiled": false,
+      "correctness": false,
+      "metadata": {
+        "compilation_error_name": "NameError",
+        "compilation_error": "name 'nn' is not defined"
+      }
+    },
+    {
+      "path": "ptx/docinject/36_RMSNorm_/Qwen_Qwen3-Coder-30B-A3B-Instruct/sample_3.json",
+      "task": "36_RMSNorm_",
+      "task_family": "normalization",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "sample_index": 3,
+      "gen_status": "generated",
+      "compiled": false,
+      "correctness": false,
+      "metadata": {
+        "compilation_error_name": "NameError",
+        "compilation_error": "name 'nn' is not defined"
+      }
+    },
+    {
+      "path": "ptx/docinject/36_RMSNorm_/Qwen_Qwen3-Coder-30B-A3B-Instruct/sample_4.json",
+      "task": "36_RMSNorm_",
+      "task_family": "normalization",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "sample_index": 4,
+      "gen_status": "truncated",
+      "compiled": false,
+      "correctness": false,
+      "eval_skipped_reason": "truncated"
+    },
+    {
+      "path": "ptx/docinject/36_RMSNorm_/openai_gpt-oss-120b/sample_0.json",
+      "task": "36_RMSNorm_",
+      "task_family": "normalization",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "openai/gpt-oss-120b",
+      "sample_index": 0,
+      "gen_status": "generated",
+      "compiled": true,
+      "correctness": false,
+      "metadata": {
+        "runtime_error_name": "PTXCompileError",
+        "runtime_error": "ptxas /tmp/tmpt_su465_/kernel.ptx, line 2; fatal   : Unsupported .version 8.7; current version is '8.5'\nptxas fatal   : Ptx assembly aborted due to errors\n"
+      }
+    },
+    {
+      "path": "ptx/docinject/36_RMSNorm_/openai_gpt-oss-120b/sample_1.json",
+      "task": "36_RMSNorm_",
+      "task_family": "normalization",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "openai/gpt-oss-120b",
+      "sample_index": 1,
+      "gen_status": "generated",
+      "compiled": true,
+      "correctness": false,
+      "metadata": {
+        "runtime_error_name": "PTXCompileError",
+        "runtime_error": "ptxas /tmp/tmpjrm1uzxo/kernel.ptx, line 2; fatal   : Unsupported .version 8.7; current version is '8.5'\nptxas fatal   : Ptx assembly aborted due to errors\n"
+      }
+    },
+    {
+      "path": "ptx/docinject/36_RMSNorm_/openai_gpt-oss-120b/sample_2.json",
+      "task": "36_RMSNorm_",
+      "task_family": "normalization",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "openai/gpt-oss-120b",
+      "sample_index": 2,
+      "gen_status": "generated",
+      "compiled": true,
+      "correctness": false,
+      "metadata": {
+        "runtime_error_name": "PTXCompileError",
+        "runtime_error": "ptxas /tmp/tmp12dtg_bb/kernel.ptx, line 2; fatal   : Unsupported .version 8.7; current version is '8.5'\nptxas fatal   : Ptx assembly aborted due to errors\n"
+      }
+    },
+    {
+      "path": "ptx/docinject/36_RMSNorm_/openai_gpt-oss-120b/sample_3.json",
+      "task": "36_RMSNorm_",
+      "task_family": "normalization",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "openai/gpt-oss-120b",
+      "sample_index": 3,
+      "gen_status": "generated",
+      "compiled": true,
+      "correctness": false,
+      "metadata": {
+        "runtime_error_name": "PTXCompileError",
+        "runtime_error": "ptxas /tmp/tmpg54rz6bd/kernel.ptx, line 2; fatal   : Unsupported .version 8.7; current version is '8.5'\nptxas fatal   : Ptx assembly aborted due to errors\n"
+      }
+    },
+    {
+      "path": "ptx/docinject/36_RMSNorm_/openai_gpt-oss-120b/sample_4.json",
+      "task": "36_RMSNorm_",
+      "task_family": "normalization",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "openai/gpt-oss-120b",
+      "sample_index": 4,
+      "gen_status": "generated",
+      "compiled": true,
+      "correctness": false,
+      "metadata": {
+        "runtime_error_name": "PTXCompileError",
+        "runtime_error": "ptxas /tmp/tmp2d5gi1rj/kernel.ptx, line 2; fatal   : Unsupported .version 8.7; current version is '8.5'\nptxas fatal   : Ptx assembly aborted due to errors\n"
+      }
+    },
+    {
+      "path": "ptx/docinject/3_Batched_matrix_multiplication/Qwen_Qwen3-Coder-30B-A3B-Instruct/sample_0.json",
+      "task": "3_Batched_matrix_multiplication",
+      "task_family": "matmul",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "sample_index": 0,
+      "gen_status": "generated",
+      "compiled": false,
+      "correctness": false,
+      "metadata": {
+        "compilation_error_name": "NameError",
+        "compilation_error": "name 'nn' is not defined"
+      }
+    },
+    {
+      "path": "ptx/docinject/3_Batched_matrix_multiplication/Qwen_Qwen3-Coder-30B-A3B-Instruct/sample_1.json",
+      "task": "3_Batched_matrix_multiplication",
+      "task_family": "matmul",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "sample_index": 1,
+      "gen_status": "generated",
+      "compiled": false,
+      "correctness": false,
+      "metadata": {
+        "compilation_error_name": "NameError",
+        "compilation_error": "name 'nn' is not defined"
+      }
+    },
+    {
+      "path": "ptx/docinject/3_Batched_matrix_multiplication/Qwen_Qwen3-Coder-30B-A3B-Instruct/sample_2.json",
+      "task": "3_Batched_matrix_multiplication",
+      "task_family": "matmul",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "sample_index": 2,
+      "gen_status": "generated",
+      "compiled": false,
+      "correctness": false,
+      "metadata": {
+        "compilation_error_name": "NameError",
+        "compilation_error": "name 'nn' is not defined"
+      }
+    },
+    {
+      "path": "ptx/docinject/3_Batched_matrix_multiplication/Qwen_Qwen3-Coder-30B-A3B-Instruct/sample_3.json",
+      "task": "3_Batched_matrix_multiplication",
+      "task_family": "matmul",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "sample_index": 3,
+      "gen_status": "generated",
+      "compiled": false,
+      "correctness": false,
+      "metadata": {
+        "compilation_error_name": "NameError",
+        "compilation_error": "name 'nn' is not defined"
+      }
+    },
+    {
+      "path": "ptx/docinject/3_Batched_matrix_multiplication/Qwen_Qwen3-Coder-30B-A3B-Instruct/sample_4.json",
+      "task": "3_Batched_matrix_multiplication",
+      "task_family": "matmul",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "sample_index": 4,
+      "gen_status": "generated",
+      "compiled": false,
+      "correctness": false,
+      "metadata": {
+        "compilation_error_name": "NameError",
+        "compilation_error": "name 'nn' is not defined"
+      }
+    },
+    {
+      "path": "ptx/docinject/3_Batched_matrix_multiplication/openai_gpt-oss-120b/sample_0.json",
+      "task": "3_Batched_matrix_multiplication",
+      "task_family": "matmul",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "openai/gpt-oss-120b",
+      "sample_index": 0,
+      "gen_status": "generated",
+      "compiled": true,
+      "correctness": false,
+      "metadata": {
+        "runtime_error_name": "PTXCompileError",
+        "runtime_error": "ptxas /tmp/tmpba4x4v9u/kernel.ptx, line 2; fatal   : Unsupported .version 8.7; current version is '8.5'\nptxas fatal   : Ptx assembly aborted due to errors\n"
+      }
+    },
+    {
+      "path": "ptx/docinject/3_Batched_matrix_multiplication/openai_gpt-oss-120b/sample_1.json",
+      "task": "3_Batched_matrix_multiplication",
+      "task_family": "matmul",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "openai/gpt-oss-120b",
+      "sample_index": 1,
+      "gen_status": "generated",
+      "compiled": true,
+      "correctness": false,
+      "metadata": {
+        "runtime_error_name": "PTXCompileError",
+        "runtime_error": "ptxas /tmp/tmpr0yidhih/kernel.ptx, line 2; fatal   : Unsupported .version 8.7; current version is '8.5'\nptxas fatal   : Ptx assembly aborted due to errors\n"
+      }
+    },
+    {
+      "path": "ptx/docinject/3_Batched_matrix_multiplication/openai_gpt-oss-120b/sample_2.json",
+      "task": "3_Batched_matrix_multiplication",
+      "task_family": "matmul",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "openai/gpt-oss-120b",
+      "sample_index": 2,
+      "gen_status": "generated",
+      "compiled": true,
+      "correctness": false,
+      "metadata": {
+        "runtime_error_name": "PTXCompileError",
+        "runtime_error": "ptxas /tmp/tmpp3su77q5/kernel.ptx, line 2; fatal   : Unsupported .version 8.7; current version is '8.5'\nptxas fatal   : Ptx assembly aborted due to errors\n"
+      }
+    },
+    {
+      "path": "ptx/docinject/3_Batched_matrix_multiplication/openai_gpt-oss-120b/sample_3.json",
+      "task": "3_Batched_matrix_multiplication",
+      "task_family": "matmul",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "openai/gpt-oss-120b",
+      "sample_index": 3,
+      "gen_status": "generated",
+      "compiled": true,
+      "correctness": false,
+      "metadata": {
+        "runtime_error_name": "PTXCompileError",
+        "runtime_error": "ptxas /tmp/tmpdiv3bnds/kernel.ptx, line 2; fatal   : Unsupported .version 8.7; current version is '8.5'\nptxas fatal   : Ptx assembly aborted due to errors\n"
+      }
+    },
+    {
+      "path": "ptx/docinject/3_Batched_matrix_multiplication/openai_gpt-oss-120b/sample_4.json",
+      "task": "3_Batched_matrix_multiplication",
+      "task_family": "matmul",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "openai/gpt-oss-120b",
+      "sample_index": 4,
+      "gen_status": "generated",
+      "compiled": true,
+      "correctness": false,
+      "metadata": {
+        "runtime_error_name": "PTXCompileError",
+        "runtime_error": "ptxas /tmp/tmpazky2b65/kernel.ptx, line 2; fatal   : Unsupported .version 8.7; current version is '8.5'\nptxas fatal   : Ptx assembly aborted due to errors\n"
+      }
+    },
+    {
+      "path": "ptx/docinject/40_LayerNorm/Qwen_Qwen3-Coder-30B-A3B-Instruct/sample_0.json",
+      "task": "40_LayerNorm",
+      "task_family": "normalization",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "sample_index": 0,
+      "gen_status": "generated",
+      "compiled": false,
+      "correctness": false,
+      "metadata": {
+        "compilation_error_name": "NameError",
+        "compilation_error": "name 'nn' is not defined"
+      }
+    },
+    {
+      "path": "ptx/docinject/40_LayerNorm/Qwen_Qwen3-Coder-30B-A3B-Instruct/sample_1.json",
+      "task": "40_LayerNorm",
+      "task_family": "normalization",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "sample_index": 1,
+      "gen_status": "generated",
+      "compiled": false,
+      "correctness": false,
+      "metadata": {
+        "compilation_error_name": "NameError",
+        "compilation_error": "name 'nn' is not defined"
+      }
+    },
+    {
+      "path": "ptx/docinject/40_LayerNorm/Qwen_Qwen3-Coder-30B-A3B-Instruct/sample_2.json",
+      "task": "40_LayerNorm",
+      "task_family": "normalization",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "sample_index": 2,
+      "gen_status": "generated",
+      "compiled": false,
+      "correctness": false,
+      "metadata": {
+        "compilation_error_name": "NameError",
+        "compilation_error": "name 'nn' is not defined"
+      }
+    },
+    {
+      "path": "ptx/docinject/40_LayerNorm/Qwen_Qwen3-Coder-30B-A3B-Instruct/sample_3.json",
+      "task": "40_LayerNorm",
+      "task_family": "normalization",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "sample_index": 3,
+      "gen_status": "generated",
+      "compiled": false,
+      "correctness": false,
+      "metadata": {
+        "compilation_error_name": "NameError",
+        "compilation_error": "name 'nn' is not defined"
+      }
+    },
+    {
+      "path": "ptx/docinject/40_LayerNorm/Qwen_Qwen3-Coder-30B-A3B-Instruct/sample_4.json",
+      "task": "40_LayerNorm",
+      "task_family": "normalization",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "sample_index": 4,
+      "gen_status": "generated",
+      "compiled": false,
+      "correctness": false,
+      "metadata": {
+        "compilation_error_name": "NameError",
+        "compilation_error": "name 'nn' is not defined"
+      }
+    },
+    {
+      "path": "ptx/docinject/40_LayerNorm/openai_gpt-oss-120b/sample_0.json",
+      "task": "40_LayerNorm",
+      "task_family": "normalization",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "openai/gpt-oss-120b",
+      "sample_index": 0,
+      "gen_status": "generated",
+      "compiled": true,
+      "correctness": false,
+      "metadata": {
+        "runtime_error_name": "TypeError",
+        "runtime_error": "ModelNew.__init__() takes 1 positional argument but 2 were given"
+      }
+    },
+    {
+      "path": "ptx/docinject/40_LayerNorm/openai_gpt-oss-120b/sample_1.json",
+      "task": "40_LayerNorm",
+      "task_family": "normalization",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "openai/gpt-oss-120b",
+      "sample_index": 1,
+      "gen_status": "generated",
+      "compiled": true,
+      "correctness": false,
+      "metadata": {
+        "runtime_error_name": "PTXCompileError",
+        "runtime_error": "ptxas /tmp/tmpqzvasbd8/kernel.ptx, line 2; fatal   : Unsupported .version 8.7; current version is '8.5'\nptxas fatal   : Ptx assembly aborted due to errors\n"
+      }
+    },
+    {
+      "path": "ptx/docinject/40_LayerNorm/openai_gpt-oss-120b/sample_2.json",
+      "task": "40_LayerNorm",
+      "task_family": "normalization",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "openai/gpt-oss-120b",
+      "sample_index": 2,
+      "gen_status": "generated",
+      "compiled": true,
+      "correctness": false,
+      "metadata": {
+        "runtime_error_name": "PTXCompileError",
+        "runtime_error": "ptxas /tmp/tmpg5hsic29/kernel.ptx, line 2; fatal   : Unsupported .version 8.7; current version is '8.5'\nptxas fatal   : Ptx assembly aborted due to errors\n"
+      }
+    },
+    {
+      "path": "ptx/docinject/40_LayerNorm/openai_gpt-oss-120b/sample_3.json",
+      "task": "40_LayerNorm",
+      "task_family": "normalization",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "openai/gpt-oss-120b",
+      "sample_index": 3,
+      "gen_status": "generated",
+      "compiled": true,
+      "correctness": false,
+      "metadata": {
+        "runtime_error_name": "TypeError",
+        "runtime_error": "ModelNew.__init__() takes 1 positional argument but 2 were given"
+      }
+    },
+    {
+      "path": "ptx/docinject/40_LayerNorm/openai_gpt-oss-120b/sample_4.json",
+      "task": "40_LayerNorm",
+      "task_family": "normalization",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "openai/gpt-oss-120b",
+      "sample_index": 4,
+      "gen_status": "generated",
+      "compiled": true,
+      "correctness": false,
+      "metadata": {
+        "runtime_error_name": "PTXCompileError",
+        "runtime_error": "ptxas /tmp/tmp50m3bk1e/kernel.ptx, line 2; fatal   : Unsupported .version 8.7; current version is '8.5'\nptxas fatal   : Ptx assembly aborted due to errors\n"
+      }
+    },
+    {
+      "path": "ptx/docinject/42_Max_Pooling_2D/Qwen_Qwen3-Coder-30B-A3B-Instruct/sample_0.json",
+      "task": "42_Max_Pooling_2D",
+      "task_family": "pooling",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "sample_index": 0,
+      "gen_status": "truncated",
+      "compiled": false,
+      "correctness": false,
+      "eval_skipped_reason": "truncated"
+    },
+    {
+      "path": "ptx/docinject/42_Max_Pooling_2D/Qwen_Qwen3-Coder-30B-A3B-Instruct/sample_1.json",
+      "task": "42_Max_Pooling_2D",
+      "task_family": "pooling",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "sample_index": 1,
+      "gen_status": "generated",
+      "compiled": false,
+      "correctness": false,
+      "metadata": {
+        "compilation_error_name": "NameError",
+        "compilation_error": "name 'nn' is not defined"
+      }
+    },
+    {
+      "path": "ptx/docinject/42_Max_Pooling_2D/Qwen_Qwen3-Coder-30B-A3B-Instruct/sample_2.json",
+      "task": "42_Max_Pooling_2D",
+      "task_family": "pooling",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "sample_index": 2,
+      "gen_status": "generated",
+      "compiled": false,
+      "correctness": false,
+      "metadata": {
+        "compilation_error_name": "NameError",
+        "compilation_error": "name 'nn' is not defined"
+      }
+    },
+    {
+      "path": "ptx/docinject/42_Max_Pooling_2D/Qwen_Qwen3-Coder-30B-A3B-Instruct/sample_3.json",
+      "task": "42_Max_Pooling_2D",
+      "task_family": "pooling",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "sample_index": 3,
+      "gen_status": "generated",
+      "compiled": false,
+      "correctness": false,
+      "metadata": {
+        "compilation_error_name": "NameError",
+        "compilation_error": "name 'nn' is not defined"
+      }
+    },
+    {
+      "path": "ptx/docinject/42_Max_Pooling_2D/Qwen_Qwen3-Coder-30B-A3B-Instruct/sample_4.json",
+      "task": "42_Max_Pooling_2D",
+      "task_family": "pooling",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "sample_index": 4,
+      "gen_status": "generated",
+      "compiled": false,
+      "correctness": false,
+      "metadata": {
+        "compilation_error_name": "NameError",
+        "compilation_error": "name 'nn' is not defined"
+      }
+    },
+    {
+      "path": "ptx/docinject/42_Max_Pooling_2D/openai_gpt-oss-120b/sample_0.json",
+      "task": "42_Max_Pooling_2D",
+      "task_family": "pooling",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "openai/gpt-oss-120b",
+      "sample_index": 0,
+      "gen_status": "generated",
+      "compiled": true,
+      "correctness": false,
+      "metadata": {
+        "runtime_error_name": "PTXCompileError",
+        "runtime_error": "ptxas /tmp/tmpilzdd8y4/kernel.ptx, line 2; fatal   : Unsupported .version 8.7; current version is '8.5'\nptxas fatal   : Ptx assembly aborted due to errors\n"
+      }
+    },
+    {
+      "path": "ptx/docinject/42_Max_Pooling_2D/openai_gpt-oss-120b/sample_1.json",
+      "task": "42_Max_Pooling_2D",
+      "task_family": "pooling",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "openai/gpt-oss-120b",
+      "sample_index": 1,
+      "gen_status": "generated",
+      "compiled": true,
+      "correctness": false,
+      "metadata": {
+        "runtime_error_name": "PTXCompileError",
+        "runtime_error": "ptxas /tmp/tmpojqvb408/kernel.ptx, line 2; fatal   : Unsupported .version 8.7; current version is '8.5'\nptxas fatal   : Ptx assembly aborted due to errors\n"
+      }
+    },
+    {
+      "path": "ptx/docinject/42_Max_Pooling_2D/openai_gpt-oss-120b/sample_2.json",
+      "task": "42_Max_Pooling_2D",
+      "task_family": "pooling",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "openai/gpt-oss-120b",
+      "sample_index": 2,
+      "gen_status": "generated",
+      "compiled": true,
+      "correctness": false,
+      "metadata": {
+        "runtime_error_name": "PTXCompileError",
+        "runtime_error": "ptxas /tmp/tmpb_mcwxfw/kernel.ptx, line 2; fatal   : Unsupported .version 8.7; current version is '8.5'\nptxas fatal   : Ptx assembly aborted due to errors\n"
+      }
+    },
+    {
+      "path": "ptx/docinject/42_Max_Pooling_2D/openai_gpt-oss-120b/sample_3.json",
+      "task": "42_Max_Pooling_2D",
+      "task_family": "pooling",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "openai/gpt-oss-120b",
+      "sample_index": 3,
+      "gen_status": "generated",
+      "compiled": true,
+      "correctness": false,
+      "metadata": {
+        "runtime_error_name": "TypeError",
+        "runtime_error": "ModelNew.__init__() takes 1 positional argument but 5 were given"
+      }
+    },
+    {
+      "path": "ptx/docinject/42_Max_Pooling_2D/openai_gpt-oss-120b/sample_4.json",
+      "task": "42_Max_Pooling_2D",
+      "task_family": "pooling",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "openai/gpt-oss-120b",
+      "sample_index": 4,
+      "gen_status": "generated",
+      "compiled": true,
+      "correctness": false,
+      "metadata": {
+        "runtime_error_name": "PTXCompileError",
+        "runtime_error": "ptxas /tmp/tmp64ded7b6/kernel.ptx, line 2; fatal   : Unsupported .version 8.7; current version is '8.5'\nptxas fatal   : Ptx assembly aborted due to errors\n"
+      }
+    },
+    {
+      "path": "ptx/docinject/47_Sum_reduction_over_a_dimension/Qwen_Qwen3-Coder-30B-A3B-Instruct/sample_0.json",
+      "task": "47_Sum_reduction_over_a_dimension",
+      "task_family": "reduction",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "sample_index": 0,
+      "gen_status": "generated",
+      "compiled": false,
+      "correctness": false,
+      "metadata": {
+        "compilation_error_name": "NameError",
+        "compilation_error": "name 'nn' is not defined"
+      }
+    },
+    {
+      "path": "ptx/docinject/47_Sum_reduction_over_a_dimension/Qwen_Qwen3-Coder-30B-A3B-Instruct/sample_1.json",
+      "task": "47_Sum_reduction_over_a_dimension",
+      "task_family": "reduction",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "sample_index": 1,
+      "gen_status": "generated",
+      "compiled": false,
+      "correctness": false,
+      "metadata": {
+        "compilation_error_name": "NameError",
+        "compilation_error": "name 'nn' is not defined"
+      }
+    },
+    {
+      "path": "ptx/docinject/47_Sum_reduction_over_a_dimension/Qwen_Qwen3-Coder-30B-A3B-Instruct/sample_2.json",
+      "task": "47_Sum_reduction_over_a_dimension",
+      "task_family": "reduction",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "sample_index": 2,
+      "gen_status": "generated",
+      "compiled": false,
+      "correctness": false,
+      "metadata": {
+        "compilation_error_name": "NameError",
+        "compilation_error": "name 'nn' is not defined"
+      }
+    },
+    {
+      "path": "ptx/docinject/47_Sum_reduction_over_a_dimension/Qwen_Qwen3-Coder-30B-A3B-Instruct/sample_3.json",
+      "task": "47_Sum_reduction_over_a_dimension",
+      "task_family": "reduction",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "sample_index": 3,
+      "gen_status": "truncated",
+      "compiled": false,
+      "correctness": false,
+      "eval_skipped_reason": "truncated"
+    },
+    {
+      "path": "ptx/docinject/47_Sum_reduction_over_a_dimension/Qwen_Qwen3-Coder-30B-A3B-Instruct/sample_4.json",
+      "task": "47_Sum_reduction_over_a_dimension",
+      "task_family": "reduction",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "sample_index": 4,
+      "gen_status": "generated",
+      "compiled": false,
+      "correctness": false,
+      "metadata": {
+        "compilation_error_name": "NameError",
+        "compilation_error": "name 'nn' is not defined"
+      }
+    },
+    {
+      "path": "ptx/docinject/47_Sum_reduction_over_a_dimension/openai_gpt-oss-120b/sample_0.json",
+      "task": "47_Sum_reduction_over_a_dimension",
+      "task_family": "reduction",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "openai/gpt-oss-120b",
+      "sample_index": 0,
+      "gen_status": "generated",
+      "compiled": true,
+      "correctness": false,
+      "metadata": {
+        "runtime_error_name": "TypeError",
+        "runtime_error": "ModelNew.__init__() takes 1 positional argument but 2 were given"
+      }
+    },
+    {
+      "path": "ptx/docinject/47_Sum_reduction_over_a_dimension/openai_gpt-oss-120b/sample_1.json",
+      "task": "47_Sum_reduction_over_a_dimension",
+      "task_family": "reduction",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "openai/gpt-oss-120b",
+      "sample_index": 1,
+      "gen_status": "generated",
+      "compiled": true,
+      "correctness": false,
+      "metadata": {
+        "runtime_error_name": "PTXCompileError",
+        "runtime_error": "ptxas /tmp/tmp79a3_wi9/kernel.ptx, line 2; fatal   : Unsupported .version 8.7; current version is '8.5'\nptxas fatal   : Ptx assembly aborted due to errors\n"
+      }
+    },
+    {
+      "path": "ptx/docinject/47_Sum_reduction_over_a_dimension/openai_gpt-oss-120b/sample_2.json",
+      "task": "47_Sum_reduction_over_a_dimension",
+      "task_family": "reduction",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "openai/gpt-oss-120b",
+      "sample_index": 2,
+      "gen_status": "generated",
+      "compiled": true,
+      "correctness": false,
+      "metadata": {
+        "runtime_error_name": "PTXCompileError",
+        "runtime_error": "ptxas /tmp/tmpivkxuwlz/kernel.ptx, line 2; fatal   : Unsupported .version 8.7; current version is '8.5'\nptxas fatal   : Ptx assembly aborted due to errors\n"
+      }
+    },
+    {
+      "path": "ptx/docinject/47_Sum_reduction_over_a_dimension/openai_gpt-oss-120b/sample_3.json",
+      "task": "47_Sum_reduction_over_a_dimension",
+      "task_family": "reduction",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "openai/gpt-oss-120b",
+      "sample_index": 3,
+      "gen_status": "generated",
+      "compiled": true,
+      "correctness": false,
+      "metadata": {
+        "runtime_error_name": "PTXCompileError",
+        "runtime_error": "ptxas /tmp/tmpgof7ebau/kernel.ptx, line 2; fatal   : Unsupported .version 8.7; current version is '8.5'\nptxas fatal   : Ptx assembly aborted due to errors\n"
+      }
+    },
+    {
+      "path": "ptx/docinject/47_Sum_reduction_over_a_dimension/openai_gpt-oss-120b/sample_4.json",
+      "task": "47_Sum_reduction_over_a_dimension",
+      "task_family": "reduction",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "openai/gpt-oss-120b",
+      "sample_index": 4,
+      "gen_status": "generated",
+      "compiled": false,
+      "correctness": false,
+      "metadata": {
+        "compilation_error_name": "NameError",
+        "compilation_error": "name 'nn' is not defined"
+      }
+    },
+    {
+      "path": "ptx/docinject/50_conv_standard_2D__square_input__square_kernel/Qwen_Qwen3-Coder-30B-A3B-Instruct/sample_0.json",
+      "task": "50_conv_standard_2D__square_input__square_kernel",
+      "task_family": "convolution",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "sample_index": 0,
+      "gen_status": "generated",
+      "compiled": false,
+      "correctness": false,
+      "metadata": {
+        "compilation_error_name": "NameError",
+        "compilation_error": "name 'nn' is not defined"
+      }
+    },
+    {
+      "path": "ptx/docinject/50_conv_standard_2D__square_input__square_kernel/Qwen_Qwen3-Coder-30B-A3B-Instruct/sample_1.json",
+      "task": "50_conv_standard_2D__square_input__square_kernel",
+      "task_family": "convolution",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "sample_index": 1,
+      "gen_status": "truncated",
+      "compiled": false,
+      "correctness": false,
+      "eval_skipped_reason": "truncated"
+    },
+    {
+      "path": "ptx/docinject/50_conv_standard_2D__square_input__square_kernel/Qwen_Qwen3-Coder-30B-A3B-Instruct/sample_2.json",
+      "task": "50_conv_standard_2D__square_input__square_kernel",
+      "task_family": "convolution",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "sample_index": 2,
+      "gen_status": "generated",
+      "compiled": false,
+      "correctness": false,
+      "metadata": {
+        "compilation_error_name": "NameError",
+        "compilation_error": "name 'nn' is not defined"
+      }
+    },
+    {
+      "path": "ptx/docinject/50_conv_standard_2D__square_input__square_kernel/Qwen_Qwen3-Coder-30B-A3B-Instruct/sample_3.json",
+      "task": "50_conv_standard_2D__square_input__square_kernel",
+      "task_family": "convolution",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "sample_index": 3,
+      "gen_status": "generated",
+      "compiled": false,
+      "correctness": false,
+      "metadata": {
+        "compilation_error_name": "NameError",
+        "compilation_error": "name 'nn' is not defined"
+      }
+    },
+    {
+      "path": "ptx/docinject/50_conv_standard_2D__square_input__square_kernel/Qwen_Qwen3-Coder-30B-A3B-Instruct/sample_4.json",
+      "task": "50_conv_standard_2D__square_input__square_kernel",
+      "task_family": "convolution",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "sample_index": 4,
+      "gen_status": "generated",
+      "compiled": false,
+      "correctness": false,
+      "metadata": {
+        "compilation_error_name": "NameError",
+        "compilation_error": "name 'nn' is not defined"
+      }
+    },
+    {
+      "path": "ptx/docinject/50_conv_standard_2D__square_input__square_kernel/openai_gpt-oss-120b/sample_0.json",
+      "task": "50_conv_standard_2D__square_input__square_kernel",
+      "task_family": "convolution",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "openai/gpt-oss-120b",
+      "sample_index": 0,
+      "gen_status": "generated",
+      "compiled": true,
+      "correctness": false,
+      "metadata": {
+        "runtime_error_name": "TypeError",
+        "runtime_error": "ModelNew.__init__() takes 1 positional argument but 2 were given"
+      }
+    },
+    {
+      "path": "ptx/docinject/50_conv_standard_2D__square_input__square_kernel/openai_gpt-oss-120b/sample_1.json",
+      "task": "50_conv_standard_2D__square_input__square_kernel",
+      "task_family": "convolution",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "openai/gpt-oss-120b",
+      "sample_index": 1,
+      "gen_status": "generated",
+      "compiled": true,
+      "correctness": false,
+      "metadata": {
+        "runtime_error_name": "TypeError",
+        "runtime_error": "ModelNew.__init__() takes 1 positional argument but 2 were given"
+      }
+    },
+    {
+      "path": "ptx/docinject/50_conv_standard_2D__square_input__square_kernel/openai_gpt-oss-120b/sample_2.json",
+      "task": "50_conv_standard_2D__square_input__square_kernel",
+      "task_family": "convolution",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "openai/gpt-oss-120b",
+      "sample_index": 2,
+      "gen_status": "truncated",
+      "compiled": false,
+      "correctness": false,
+      "eval_skipped_reason": "truncated"
+    },
+    {
+      "path": "ptx/docinject/50_conv_standard_2D__square_input__square_kernel/openai_gpt-oss-120b/sample_3.json",
+      "task": "50_conv_standard_2D__square_input__square_kernel",
+      "task_family": "convolution",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "openai/gpt-oss-120b",
+      "sample_index": 3,
+      "gen_status": "truncated",
+      "compiled": false,
+      "correctness": false,
+      "eval_skipped_reason": "truncated"
+    },
+    {
+      "path": "ptx/docinject/50_conv_standard_2D__square_input__square_kernel/openai_gpt-oss-120b/sample_4.json",
+      "task": "50_conv_standard_2D__square_input__square_kernel",
+      "task_family": "convolution",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "openai/gpt-oss-120b",
+      "sample_index": 4,
+      "gen_status": "generated",
+      "compiled": true,
+      "correctness": false,
+      "metadata": {
+        "runtime_error_name": "TypeError",
+        "runtime_error": "ModelNew.__init__() takes 1 positional argument but 2 were given"
+      }
+    },
+    {
+      "path": "ptx/docinject/51_Argmax_over_a_dimension/Qwen_Qwen3-Coder-30B-A3B-Instruct/sample_0.json",
+      "task": "51_Argmax_over_a_dimension",
+      "task_family": "reduction",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "sample_index": 0,
+      "gen_status": "generated",
+      "compiled": false,
+      "correctness": false,
+      "metadata": {
+        "compilation_error_name": "NameError",
+        "compilation_error": "name 'nn' is not defined"
+      }
+    },
+    {
+      "path": "ptx/docinject/51_Argmax_over_a_dimension/Qwen_Qwen3-Coder-30B-A3B-Instruct/sample_1.json",
+      "task": "51_Argmax_over_a_dimension",
+      "task_family": "reduction",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "sample_index": 1,
+      "gen_status": "generated",
+      "compiled": false,
+      "correctness": false,
+      "metadata": {
+        "compilation_error_name": "NameError",
+        "compilation_error": "name 'nn' is not defined"
+      }
+    },
+    {
+      "path": "ptx/docinject/51_Argmax_over_a_dimension/Qwen_Qwen3-Coder-30B-A3B-Instruct/sample_2.json",
+      "task": "51_Argmax_over_a_dimension",
+      "task_family": "reduction",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "sample_index": 2,
+      "gen_status": "generated",
+      "compiled": false,
+      "correctness": false,
+      "metadata": {
+        "compilation_error_name": "NameError",
+        "compilation_error": "name 'nn' is not defined"
+      }
+    },
+    {
+      "path": "ptx/docinject/51_Argmax_over_a_dimension/Qwen_Qwen3-Coder-30B-A3B-Instruct/sample_3.json",
+      "task": "51_Argmax_over_a_dimension",
+      "task_family": "reduction",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "sample_index": 3,
+      "gen_status": "generated",
+      "compiled": false,
+      "correctness": false,
+      "metadata": {
+        "compilation_error_name": "NameError",
+        "compilation_error": "name 'nn' is not defined"
+      }
+    },
+    {
+      "path": "ptx/docinject/51_Argmax_over_a_dimension/Qwen_Qwen3-Coder-30B-A3B-Instruct/sample_4.json",
+      "task": "51_Argmax_over_a_dimension",
+      "task_family": "reduction",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "sample_index": 4,
+      "gen_status": "generated",
+      "compiled": false,
+      "correctness": false,
+      "metadata": {
+        "compilation_error_name": "NameError",
+        "compilation_error": "name 'nn' is not defined"
+      }
+    },
+    {
+      "path": "ptx/docinject/51_Argmax_over_a_dimension/openai_gpt-oss-120b/sample_0.json",
+      "task": "51_Argmax_over_a_dimension",
+      "task_family": "reduction",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "openai/gpt-oss-120b",
+      "sample_index": 0,
+      "gen_status": "generated",
+      "compiled": true,
+      "correctness": false,
+      "metadata": {
+        "runtime_error_name": "PTXCompileError",
+        "runtime_error": "ptxas /tmp/tmpt0q2fbmi/kernel.ptx, line 2; fatal   : Unsupported .version 8.7; current version is '8.5'\nptxas fatal   : Ptx assembly aborted due to errors\n"
+      }
+    },
+    {
+      "path": "ptx/docinject/51_Argmax_over_a_dimension/openai_gpt-oss-120b/sample_1.json",
+      "task": "51_Argmax_over_a_dimension",
+      "task_family": "reduction",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "openai/gpt-oss-120b",
+      "sample_index": 1,
+      "gen_status": "generated",
+      "compiled": true,
+      "correctness": false,
+      "metadata": {
+        "runtime_error_name": "PTXCompileError",
+        "runtime_error": "ptxas /tmp/tmpor40frac/kernel.ptx, line 2; fatal   : Unsupported .version 8.7; current version is '8.5'\nptxas fatal   : Ptx assembly aborted due to errors\n"
+      }
+    },
+    {
+      "path": "ptx/docinject/51_Argmax_over_a_dimension/openai_gpt-oss-120b/sample_2.json",
+      "task": "51_Argmax_over_a_dimension",
+      "task_family": "reduction",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "openai/gpt-oss-120b",
+      "sample_index": 2,
+      "gen_status": "generated",
+      "compiled": true,
+      "correctness": false,
+      "metadata": {
+        "runtime_error_name": "PTXCompileError",
+        "runtime_error": "ptxas /tmp/tmptr7u1to_/kernel.ptx, line 2; fatal   : Unsupported .version 8.7; current version is '8.5'\nptxas fatal   : Ptx assembly aborted due to errors\n"
+      }
+    },
+    {
+      "path": "ptx/docinject/51_Argmax_over_a_dimension/openai_gpt-oss-120b/sample_3.json",
+      "task": "51_Argmax_over_a_dimension",
+      "task_family": "reduction",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "openai/gpt-oss-120b",
+      "sample_index": 3,
+      "gen_status": "generated",
+      "compiled": true,
+      "correctness": false,
+      "metadata": {
+        "runtime_error_name": "PTXCompileError",
+        "runtime_error": "ptxas /tmp/tmpuav_r6dv/kernel.ptx, line 2; fatal   : Unsupported .version 8.7; current version is '8.5'\nptxas fatal   : Ptx assembly aborted due to errors\n"
+      }
+    },
+    {
+      "path": "ptx/docinject/51_Argmax_over_a_dimension/openai_gpt-oss-120b/sample_4.json",
+      "task": "51_Argmax_over_a_dimension",
+      "task_family": "reduction",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "openai/gpt-oss-120b",
+      "sample_index": 4,
+      "gen_status": "generated",
+      "compiled": true,
+      "correctness": false,
+      "metadata": {
+        "runtime_error_name": "PTXCompileError",
+        "runtime_error": "ptxas /tmp/tmpvzytb7ik/kernel.ptx, line 2; fatal   : Unsupported .version 8.7; current version is '8.5'\nptxas fatal   : Ptx assembly aborted due to errors\n"
+      }
+    },
+    {
+      "path": "ptx/docinject/54_conv_standard_3D__square_input__square_kernel/Qwen_Qwen3-Coder-30B-A3B-Instruct/sample_0.json",
+      "task": "54_conv_standard_3D__square_input__square_kernel",
+      "task_family": "convolution",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "sample_index": 0,
+      "gen_status": "generated",
+      "compiled": false,
+      "correctness": false,
+      "metadata": {
+        "compilation_error_name": "NameError",
+        "compilation_error": "name 'nn' is not defined"
+      }
+    },
+    {
+      "path": "ptx/docinject/54_conv_standard_3D__square_input__square_kernel/Qwen_Qwen3-Coder-30B-A3B-Instruct/sample_1.json",
+      "task": "54_conv_standard_3D__square_input__square_kernel",
+      "task_family": "convolution",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "sample_index": 1,
+      "gen_status": "generated",
+      "compiled": false,
+      "correctness": false,
+      "metadata": {
+        "compilation_error_name": "NameError",
+        "compilation_error": "name 'nn' is not defined"
+      }
+    },
+    {
+      "path": "ptx/docinject/54_conv_standard_3D__square_input__square_kernel/Qwen_Qwen3-Coder-30B-A3B-Instruct/sample_2.json",
+      "task": "54_conv_standard_3D__square_input__square_kernel",
+      "task_family": "convolution",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "sample_index": 2,
+      "gen_status": "generated",
+      "compiled": false,
+      "correctness": false,
+      "metadata": {
+        "compilation_error_name": "NameError",
+        "compilation_error": "name 'nn' is not defined"
+      }
+    },
+    {
+      "path": "ptx/docinject/54_conv_standard_3D__square_input__square_kernel/Qwen_Qwen3-Coder-30B-A3B-Instruct/sample_3.json",
+      "task": "54_conv_standard_3D__square_input__square_kernel",
+      "task_family": "convolution",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "sample_index": 3,
+      "gen_status": "generated",
+      "compiled": false,
+      "correctness": false,
+      "metadata": {
+        "compilation_error_name": "NameError",
+        "compilation_error": "name 'nn' is not defined"
+      }
+    },
+    {
+      "path": "ptx/docinject/54_conv_standard_3D__square_input__square_kernel/Qwen_Qwen3-Coder-30B-A3B-Instruct/sample_4.json",
+      "task": "54_conv_standard_3D__square_input__square_kernel",
+      "task_family": "convolution",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "sample_index": 4,
+      "gen_status": "generated",
+      "compiled": false,
+      "correctness": false,
+      "metadata": {
+        "compilation_error_name": "NameError",
+        "compilation_error": "name 'nn' is not defined"
+      }
+    },
+    {
+      "path": "ptx/docinject/54_conv_standard_3D__square_input__square_kernel/openai_gpt-oss-120b/sample_0.json",
+      "task": "54_conv_standard_3D__square_input__square_kernel",
+      "task_family": "convolution",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "openai/gpt-oss-120b",
+      "sample_index": 0,
+      "gen_status": "truncated",
+      "compiled": false,
+      "correctness": false,
+      "eval_skipped_reason": "truncated"
+    },
+    {
+      "path": "ptx/docinject/54_conv_standard_3D__square_input__square_kernel/openai_gpt-oss-120b/sample_1.json",
+      "task": "54_conv_standard_3D__square_input__square_kernel",
+      "task_family": "convolution",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "openai/gpt-oss-120b",
+      "sample_index": 1,
+      "gen_status": "generated",
+      "compiled": true,
+      "correctness": false,
+      "metadata": {
+        "runtime_error_name": "PTXCompileError",
+        "runtime_error": "ptxas /tmp/tmpxvmas2x_/kernel.ptx, line 2; fatal   : Unsupported .version 8.7; current version is '8.5'\nptxas fatal   : Ptx assembly aborted due to errors\n"
+      }
+    },
+    {
+      "path": "ptx/docinject/54_conv_standard_3D__square_input__square_kernel/openai_gpt-oss-120b/sample_2.json",
+      "task": "54_conv_standard_3D__square_input__square_kernel",
+      "task_family": "convolution",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "openai/gpt-oss-120b",
+      "sample_index": 2,
+      "gen_status": "generated",
+      "compiled": true,
+      "correctness": false,
+      "metadata": {
+        "runtime_error_name": "PTXCompileError",
+        "runtime_error": "ptxas /tmp/tmp3b89haf5/kernel.ptx, line 2; fatal   : Unsupported .version 8.7; current version is '8.5'\nptxas fatal   : Ptx assembly aborted due to errors\n"
+      }
+    },
+    {
+      "path": "ptx/docinject/54_conv_standard_3D__square_input__square_kernel/openai_gpt-oss-120b/sample_3.json",
+      "task": "54_conv_standard_3D__square_input__square_kernel",
+      "task_family": "convolution",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "openai/gpt-oss-120b",
+      "sample_index": 3,
+      "gen_status": "truncated",
+      "compiled": false,
+      "correctness": false,
+      "eval_skipped_reason": "truncated"
+    },
+    {
+      "path": "ptx/docinject/54_conv_standard_3D__square_input__square_kernel/openai_gpt-oss-120b/sample_4.json",
+      "task": "54_conv_standard_3D__square_input__square_kernel",
+      "task_family": "convolution",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "openai/gpt-oss-120b",
+      "sample_index": 4,
+      "gen_status": "generated",
+      "compiled": true,
+      "correctness": false,
+      "metadata": {
+        "runtime_error_name": "PTXCompileError",
+        "runtime_error": "ptxas /tmp/tmp355exdpg/kernel.ptx, line 2; fatal   : Unsupported .version 8.7; current version is '8.5'\nptxas fatal   : Ptx assembly aborted due to errors\n"
+      }
+    },
+    {
+      "path": "ptx/docinject/57_conv_transposed_2D__square_input__square_kernel/Qwen_Qwen3-Coder-30B-A3B-Instruct/sample_0.json",
+      "task": "57_conv_transposed_2D__square_input__square_kernel",
+      "task_family": "convolution",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "sample_index": 0,
+      "gen_status": "generated",
+      "compiled": false,
+      "correctness": false,
+      "metadata": {
+        "compilation_error_name": "NameError",
+        "compilation_error": "name 'nn' is not defined"
+      }
+    },
+    {
+      "path": "ptx/docinject/57_conv_transposed_2D__square_input__square_kernel/Qwen_Qwen3-Coder-30B-A3B-Instruct/sample_1.json",
+      "task": "57_conv_transposed_2D__square_input__square_kernel",
+      "task_family": "convolution",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "sample_index": 1,
+      "gen_status": "generated",
+      "compiled": false,
+      "correctness": false,
+      "metadata": {
+        "compilation_error_name": "NameError",
+        "compilation_error": "name 'nn' is not defined"
+      }
+    },
+    {
+      "path": "ptx/docinject/57_conv_transposed_2D__square_input__square_kernel/Qwen_Qwen3-Coder-30B-A3B-Instruct/sample_2.json",
+      "task": "57_conv_transposed_2D__square_input__square_kernel",
+      "task_family": "convolution",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "sample_index": 2,
+      "gen_status": "format_failure",
+      "compiled": false,
+      "correctness": false,
+      "eval_skipped_reason": "format_failure"
+    },
+    {
+      "path": "ptx/docinject/57_conv_transposed_2D__square_input__square_kernel/Qwen_Qwen3-Coder-30B-A3B-Instruct/sample_3.json",
+      "task": "57_conv_transposed_2D__square_input__square_kernel",
+      "task_family": "convolution",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "sample_index": 3,
+      "gen_status": "generated",
+      "compiled": false,
+      "correctness": false,
+      "metadata": {
+        "compilation_error_name": "NameError",
+        "compilation_error": "name 'nn' is not defined"
+      }
+    },
+    {
+      "path": "ptx/docinject/57_conv_transposed_2D__square_input__square_kernel/Qwen_Qwen3-Coder-30B-A3B-Instruct/sample_4.json",
+      "task": "57_conv_transposed_2D__square_input__square_kernel",
+      "task_family": "convolution",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "sample_index": 4,
+      "gen_status": "truncated",
+      "compiled": false,
+      "correctness": false,
+      "eval_skipped_reason": "truncated"
+    },
+    {
+      "path": "ptx/docinject/57_conv_transposed_2D__square_input__square_kernel/openai_gpt-oss-120b/sample_0.json",
+      "task": "57_conv_transposed_2D__square_input__square_kernel",
+      "task_family": "convolution",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "openai/gpt-oss-120b",
+      "sample_index": 0,
+      "gen_status": "generated",
+      "compiled": true,
+      "correctness": false,
+      "metadata": {
+        "runtime_error_name": "PTXCompileError",
+        "runtime_error": "ptxas /tmp/tmpdbqt84ns/kernel.ptx, line 2; fatal   : Unsupported .version 8.7; current version is '8.5'\nptxas fatal   : Ptx assembly aborted due to errors\n"
+      }
+    },
+    {
+      "path": "ptx/docinject/57_conv_transposed_2D__square_input__square_kernel/openai_gpt-oss-120b/sample_1.json",
+      "task": "57_conv_transposed_2D__square_input__square_kernel",
+      "task_family": "convolution",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "openai/gpt-oss-120b",
+      "sample_index": 1,
+      "gen_status": "generated",
+      "compiled": true,
+      "correctness": false,
+      "metadata": {
+        "runtime_error_name": "PTXCompileError",
+        "runtime_error": "ptxas /tmp/tmp_ghzewti/kernel.ptx, line 2; fatal   : Unsupported .version 8.7; current version is '8.5'\nptxas fatal   : Ptx assembly aborted due to errors\n"
+      }
+    },
+    {
+      "path": "ptx/docinject/57_conv_transposed_2D__square_input__square_kernel/openai_gpt-oss-120b/sample_2.json",
+      "task": "57_conv_transposed_2D__square_input__square_kernel",
+      "task_family": "convolution",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "openai/gpt-oss-120b",
+      "sample_index": 2,
+      "gen_status": "generated",
+      "compiled": true,
+      "correctness": false,
+      "metadata": {
+        "runtime_error_name": "PTXCompileError",
+        "runtime_error": "ptxas /tmp/tmp408rlx6b/kernel.ptx, line 2; fatal   : Unsupported .version 8.7; current version is '8.5'\nptxas fatal   : Ptx assembly aborted due to errors\n"
+      }
+    },
+    {
+      "path": "ptx/docinject/57_conv_transposed_2D__square_input__square_kernel/openai_gpt-oss-120b/sample_3.json",
+      "task": "57_conv_transposed_2D__square_input__square_kernel",
+      "task_family": "convolution",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "openai/gpt-oss-120b",
+      "sample_index": 3,
+      "gen_status": "generated",
+      "compiled": true,
+      "correctness": false,
+      "metadata": {
+        "runtime_error_name": "PTXCompileError",
+        "runtime_error": "ptxas /tmp/tmp2qzyopmt/kernel.ptx, line 2; fatal   : Unsupported .version 8.7; current version is '8.5'\nptxas fatal   : Ptx assembly aborted due to errors\n"
+      }
+    },
+    {
+      "path": "ptx/docinject/57_conv_transposed_2D__square_input__square_kernel/openai_gpt-oss-120b/sample_4.json",
+      "task": "57_conv_transposed_2D__square_input__square_kernel",
+      "task_family": "convolution",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "openai/gpt-oss-120b",
+      "sample_index": 4,
+      "gen_status": "generated",
+      "compiled": true,
+      "correctness": false,
+      "metadata": {
+        "runtime_error_name": "PTXCompileError",
+        "runtime_error": "ptxas /tmp/tmpgj2ik26t/kernel.ptx, line 2; fatal   : Unsupported .version 8.7; current version is '8.5'\nptxas fatal   : Ptx assembly aborted due to errors\n"
+      }
+    },
+    {
+      "path": "ptx/docinject/6_Matmul_with_large_K_dimension_/Qwen_Qwen3-Coder-30B-A3B-Instruct/sample_0.json",
+      "task": "6_Matmul_with_large_K_dimension_",
+      "task_family": "matmul",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "sample_index": 0,
+      "gen_status": "generated",
+      "compiled": false,
+      "correctness": false,
+      "metadata": {
+        "compilation_error_name": "NameError",
+        "compilation_error": "name 'nn' is not defined"
+      }
+    },
+    {
+      "path": "ptx/docinject/6_Matmul_with_large_K_dimension_/Qwen_Qwen3-Coder-30B-A3B-Instruct/sample_1.json",
+      "task": "6_Matmul_with_large_K_dimension_",
+      "task_family": "matmul",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "sample_index": 1,
+      "gen_status": "generated",
+      "compiled": false,
+      "correctness": false,
+      "metadata": {
+        "compilation_error_name": "NameError",
+        "compilation_error": "name 'nn' is not defined"
+      }
+    },
+    {
+      "path": "ptx/docinject/6_Matmul_with_large_K_dimension_/Qwen_Qwen3-Coder-30B-A3B-Instruct/sample_2.json",
+      "task": "6_Matmul_with_large_K_dimension_",
+      "task_family": "matmul",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "sample_index": 2,
+      "gen_status": "generated",
+      "compiled": false,
+      "correctness": false,
+      "metadata": {
+        "compilation_error_name": "NameError",
+        "compilation_error": "name 'nn' is not defined"
+      }
+    },
+    {
+      "path": "ptx/docinject/6_Matmul_with_large_K_dimension_/Qwen_Qwen3-Coder-30B-A3B-Instruct/sample_3.json",
+      "task": "6_Matmul_with_large_K_dimension_",
+      "task_family": "matmul",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "sample_index": 3,
+      "gen_status": "generated",
+      "compiled": false,
+      "correctness": false,
+      "metadata": {
+        "compilation_error_name": "NameError",
+        "compilation_error": "name 'nn' is not defined"
+      }
+    },
+    {
+      "path": "ptx/docinject/6_Matmul_with_large_K_dimension_/Qwen_Qwen3-Coder-30B-A3B-Instruct/sample_4.json",
+      "task": "6_Matmul_with_large_K_dimension_",
+      "task_family": "matmul",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "sample_index": 4,
+      "gen_status": "generated",
+      "compiled": false,
+      "correctness": false,
+      "metadata": {
+        "compilation_error_name": "NameError",
+        "compilation_error": "name 'nn' is not defined"
+      }
+    },
+    {
+      "path": "ptx/docinject/6_Matmul_with_large_K_dimension_/openai_gpt-oss-120b/sample_0.json",
+      "task": "6_Matmul_with_large_K_dimension_",
+      "task_family": "matmul",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "openai/gpt-oss-120b",
+      "sample_index": 0,
+      "gen_status": "generated",
+      "compiled": true,
+      "correctness": false,
+      "metadata": {
+        "runtime_error_name": "PTXCompileError",
+        "runtime_error": "ptxas /tmp/tmp0d_qpezb/kernel.ptx, line 2; fatal   : Unsupported .version 8.7; current version is '8.5'\nptxas fatal   : Ptx assembly aborted due to errors\n"
+      }
+    },
+    {
+      "path": "ptx/docinject/6_Matmul_with_large_K_dimension_/openai_gpt-oss-120b/sample_1.json",
+      "task": "6_Matmul_with_large_K_dimension_",
+      "task_family": "matmul",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "openai/gpt-oss-120b",
+      "sample_index": 1,
+      "gen_status": "generated",
+      "compiled": true,
+      "correctness": false,
+      "metadata": {
+        "runtime_error_name": "PTXCompileError",
+        "runtime_error": "ptxas /tmp/tmpkgcsiv0a/kernel.ptx, line 2; fatal   : Unsupported .version 8.7; current version is '8.5'\nptxas fatal   : Ptx assembly aborted due to errors\n"
+      }
+    },
+    {
+      "path": "ptx/docinject/6_Matmul_with_large_K_dimension_/openai_gpt-oss-120b/sample_2.json",
+      "task": "6_Matmul_with_large_K_dimension_",
+      "task_family": "matmul",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "openai/gpt-oss-120b",
+      "sample_index": 2,
+      "gen_status": "generated",
+      "compiled": false,
+      "correctness": false,
+      "metadata": {
+        "compilation_error_name": "NameError",
+        "compilation_error": "name 'nn' is not defined"
+      }
+    },
+    {
+      "path": "ptx/docinject/6_Matmul_with_large_K_dimension_/openai_gpt-oss-120b/sample_3.json",
+      "task": "6_Matmul_with_large_K_dimension_",
+      "task_family": "matmul",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "openai/gpt-oss-120b",
+      "sample_index": 3,
+      "gen_status": "generated",
+      "compiled": false,
+      "correctness": false,
+      "metadata": {
+        "compilation_error_name": "NameError",
+        "compilation_error": "name 'nn' is not defined"
+      }
+    },
+    {
+      "path": "ptx/docinject/6_Matmul_with_large_K_dimension_/openai_gpt-oss-120b/sample_4.json",
+      "task": "6_Matmul_with_large_K_dimension_",
+      "task_family": "matmul",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "openai/gpt-oss-120b",
+      "sample_index": 4,
+      "gen_status": "generated",
+      "compiled": true,
+      "correctness": false,
+      "metadata": {
+        "runtime_error_name": "PTXCompileError",
+        "runtime_error": "ptxas /tmp/tmpmb9ln1e2/kernel.ptx, line 2; fatal   : Unsupported .version 8.7; current version is '8.5'\nptxas fatal   : Ptx assembly aborted due to errors\n"
+      }
+    },
+    {
+      "path": "ptx/docinject/82_conv_depthwise_2D_square_input_square_kernel/Qwen_Qwen3-Coder-30B-A3B-Instruct/sample_0.json",
+      "task": "82_conv_depthwise_2D_square_input_square_kernel",
+      "task_family": "convolution",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "sample_index": 0,
+      "gen_status": "generated",
+      "compiled": false,
+      "correctness": false,
+      "metadata": {
+        "compilation_error_name": "NameError",
+        "compilation_error": "name 'nn' is not defined"
+      }
+    },
+    {
+      "path": "ptx/docinject/82_conv_depthwise_2D_square_input_square_kernel/Qwen_Qwen3-Coder-30B-A3B-Instruct/sample_1.json",
+      "task": "82_conv_depthwise_2D_square_input_square_kernel",
+      "task_family": "convolution",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "sample_index": 1,
+      "gen_status": "generated",
+      "compiled": false,
+      "correctness": false,
+      "metadata": {
+        "compilation_error_name": "NameError",
+        "compilation_error": "name 'nn' is not defined"
+      }
+    },
+    {
+      "path": "ptx/docinject/82_conv_depthwise_2D_square_input_square_kernel/Qwen_Qwen3-Coder-30B-A3B-Instruct/sample_2.json",
+      "task": "82_conv_depthwise_2D_square_input_square_kernel",
+      "task_family": "convolution",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "sample_index": 2,
+      "gen_status": "truncated",
+      "compiled": false,
+      "correctness": false,
+      "eval_skipped_reason": "truncated"
+    },
+    {
+      "path": "ptx/docinject/82_conv_depthwise_2D_square_input_square_kernel/Qwen_Qwen3-Coder-30B-A3B-Instruct/sample_3.json",
+      "task": "82_conv_depthwise_2D_square_input_square_kernel",
+      "task_family": "convolution",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "sample_index": 3,
+      "gen_status": "generated",
+      "compiled": false,
+      "correctness": false,
+      "metadata": {
+        "compilation_error_name": "NameError",
+        "compilation_error": "name 'nn' is not defined"
+      }
+    },
+    {
+      "path": "ptx/docinject/82_conv_depthwise_2D_square_input_square_kernel/Qwen_Qwen3-Coder-30B-A3B-Instruct/sample_4.json",
+      "task": "82_conv_depthwise_2D_square_input_square_kernel",
+      "task_family": "convolution",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "sample_index": 4,
+      "gen_status": "generated",
+      "compiled": false,
+      "correctness": false,
+      "metadata": {
+        "compilation_error_name": "NameError",
+        "compilation_error": "name 'nn' is not defined"
+      }
+    },
+    {
+      "path": "ptx/docinject/82_conv_depthwise_2D_square_input_square_kernel/openai_gpt-oss-120b/sample_0.json",
+      "task": "82_conv_depthwise_2D_square_input_square_kernel",
+      "task_family": "convolution",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "openai/gpt-oss-120b",
+      "sample_index": 0,
+      "gen_status": "generated",
+      "compiled": true,
+      "correctness": false,
+      "metadata": {
+        "runtime_error_name": "PTXCompileError",
+        "runtime_error": "ptxas /tmp/tmpj6kr9_km/kernel.ptx, line 2; fatal   : Unsupported .version 8.7; current version is '8.5'\nptxas fatal   : Ptx assembly aborted due to errors\n"
+      }
+    },
+    {
+      "path": "ptx/docinject/82_conv_depthwise_2D_square_input_square_kernel/openai_gpt-oss-120b/sample_1.json",
+      "task": "82_conv_depthwise_2D_square_input_square_kernel",
+      "task_family": "convolution",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "openai/gpt-oss-120b",
+      "sample_index": 1,
+      "gen_status": "generated",
+      "compiled": true,
+      "correctness": false,
+      "metadata": {
+        "runtime_error_name": "PTXCompileError",
+        "runtime_error": "ptxas /tmp/tmp536tfrpb/kernel.ptx, line 2; fatal   : Unsupported .version 8.7; current version is '8.5'\nptxas fatal   : Ptx assembly aborted due to errors\n"
+      }
+    },
+    {
+      "path": "ptx/docinject/82_conv_depthwise_2D_square_input_square_kernel/openai_gpt-oss-120b/sample_2.json",
+      "task": "82_conv_depthwise_2D_square_input_square_kernel",
+      "task_family": "convolution",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "openai/gpt-oss-120b",
+      "sample_index": 2,
+      "gen_status": "truncated",
+      "compiled": false,
+      "correctness": false,
+      "eval_skipped_reason": "truncated"
+    },
+    {
+      "path": "ptx/docinject/82_conv_depthwise_2D_square_input_square_kernel/openai_gpt-oss-120b/sample_3.json",
+      "task": "82_conv_depthwise_2D_square_input_square_kernel",
+      "task_family": "convolution",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "openai/gpt-oss-120b",
+      "sample_index": 3,
+      "gen_status": "generated",
+      "compiled": true,
+      "correctness": false,
+      "metadata": {
+        "runtime_error_name": "PTXCompileError",
+        "runtime_error": "ptxas /tmp/tmpwdh1g_xz/kernel.ptx, line 2; fatal   : Unsupported .version 8.7; current version is '8.5'\nptxas fatal   : Ptx assembly aborted due to errors\n"
+      }
+    },
+    {
+      "path": "ptx/docinject/82_conv_depthwise_2D_square_input_square_kernel/openai_gpt-oss-120b/sample_4.json",
+      "task": "82_conv_depthwise_2D_square_input_square_kernel",
+      "task_family": "convolution",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "openai/gpt-oss-120b",
+      "sample_index": 4,
+      "gen_status": "generated",
+      "compiled": true,
+      "correctness": false,
+      "metadata": {
+        "runtime_error_name": "TypeError",
+        "runtime_error": "ModelNew.__init__() takes 1 positional argument but 5 were given"
+      }
+    },
+    {
+      "path": "ptx/docinject/89_cumsum/Qwen_Qwen3-Coder-30B-A3B-Instruct/sample_0.json",
+      "task": "89_cumsum",
+      "task_family": "cumulative_scan",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "sample_index": 0,
+      "gen_status": "generated",
+      "compiled": false,
+      "correctness": false,
+      "metadata": {
+        "compilation_error_name": "NameError",
+        "compilation_error": "name 'nn' is not defined"
+      }
+    },
+    {
+      "path": "ptx/docinject/89_cumsum/Qwen_Qwen3-Coder-30B-A3B-Instruct/sample_1.json",
+      "task": "89_cumsum",
+      "task_family": "cumulative_scan",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "sample_index": 1,
+      "gen_status": "generated",
+      "compiled": false,
+      "correctness": false,
+      "metadata": {
+        "compilation_error_name": "NameError",
+        "compilation_error": "name 'nn' is not defined"
+      }
+    },
+    {
+      "path": "ptx/docinject/89_cumsum/Qwen_Qwen3-Coder-30B-A3B-Instruct/sample_2.json",
+      "task": "89_cumsum",
+      "task_family": "cumulative_scan",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "sample_index": 2,
+      "gen_status": "generated",
+      "compiled": false,
+      "correctness": false,
+      "metadata": {
+        "compilation_error_name": "NameError",
+        "compilation_error": "name 'nn' is not defined"
+      }
+    },
+    {
+      "path": "ptx/docinject/89_cumsum/Qwen_Qwen3-Coder-30B-A3B-Instruct/sample_3.json",
+      "task": "89_cumsum",
+      "task_family": "cumulative_scan",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "sample_index": 3,
+      "gen_status": "generated",
+      "compiled": false,
+      "correctness": false,
+      "metadata": {
+        "compilation_error_name": "NameError",
+        "compilation_error": "name 'nn' is not defined"
+      }
+    },
+    {
+      "path": "ptx/docinject/89_cumsum/Qwen_Qwen3-Coder-30B-A3B-Instruct/sample_4.json",
+      "task": "89_cumsum",
+      "task_family": "cumulative_scan",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "sample_index": 4,
+      "gen_status": "generated",
+      "compiled": false,
+      "correctness": false,
+      "metadata": {
+        "compilation_error_name": "NameError",
+        "compilation_error": "name 'nn' is not defined"
+      }
+    },
+    {
+      "path": "ptx/docinject/89_cumsum/openai_gpt-oss-120b/sample_0.json",
+      "task": "89_cumsum",
+      "task_family": "cumulative_scan",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "openai/gpt-oss-120b",
+      "sample_index": 0,
+      "gen_status": "generated",
+      "compiled": true,
+      "correctness": false,
+      "metadata": {
+        "runtime_error_name": "TypeError",
+        "runtime_error": "ModelNew.__init__() takes 1 positional argument but 2 were given"
+      }
+    },
+    {
+      "path": "ptx/docinject/89_cumsum/openai_gpt-oss-120b/sample_1.json",
+      "task": "89_cumsum",
+      "task_family": "cumulative_scan",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "openai/gpt-oss-120b",
+      "sample_index": 1,
+      "gen_status": "generated",
+      "compiled": true,
+      "correctness": false,
+      "metadata": {
+        "runtime_error_name": "PTXCompileError",
+        "runtime_error": "ptxas /tmp/tmph813feh9/kernel.ptx, line 2; fatal   : Unsupported .version 8.7; current version is '8.5'\nptxas fatal   : Ptx assembly aborted due to errors\n"
+      }
+    },
+    {
+      "path": "ptx/docinject/89_cumsum/openai_gpt-oss-120b/sample_2.json",
+      "task": "89_cumsum",
+      "task_family": "cumulative_scan",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "openai/gpt-oss-120b",
+      "sample_index": 2,
+      "gen_status": "generated",
+      "compiled": true,
+      "correctness": false,
+      "metadata": {
+        "runtime_error_name": "PTXCompileError",
+        "runtime_error": "ptxas /tmp/tmpumjvs5a2/kernel.ptx, line 2; fatal   : Unsupported .version 8.7; current version is '8.5'\nptxas fatal   : Ptx assembly aborted due to errors\n"
+      }
+    },
+    {
+      "path": "ptx/docinject/89_cumsum/openai_gpt-oss-120b/sample_3.json",
+      "task": "89_cumsum",
+      "task_family": "cumulative_scan",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "openai/gpt-oss-120b",
+      "sample_index": 3,
+      "gen_status": "generated",
+      "compiled": true,
+      "correctness": false,
+      "metadata": {
+        "runtime_error_name": "PTXCompileError",
+        "runtime_error": "ptxas /tmp/tmpxblxuiw_/kernel.ptx, line 2; fatal   : Unsupported .version 8.7; current version is '8.5'\nptxas fatal   : Ptx assembly aborted due to errors\n"
+      }
+    },
+    {
+      "path": "ptx/docinject/89_cumsum/openai_gpt-oss-120b/sample_4.json",
+      "task": "89_cumsum",
+      "task_family": "cumulative_scan",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "openai/gpt-oss-120b",
+      "sample_index": 4,
+      "gen_status": "generated",
+      "compiled": true,
+      "correctness": false,
+      "metadata": {
+        "runtime_error_name": "PTXCompileError",
+        "runtime_error": "ptxas /tmp/tmpqu42qzch/kernel.ptx, line 2; fatal   : Unsupported .version 8.7; current version is '8.5'\nptxas fatal   : Ptx assembly aborted due to errors\n"
+      }
+    },
+    {
+      "path": "ptx/docinject/95_CrossEntropyLoss/Qwen_Qwen3-Coder-30B-A3B-Instruct/sample_0.json",
+      "task": "95_CrossEntropyLoss",
+      "task_family": "loss",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "sample_index": 0,
+      "gen_status": "generated",
+      "compiled": false,
+      "correctness": false,
+      "metadata": {
+        "compilation_error_name": "NameError",
+        "compilation_error": "name 'nn' is not defined"
+      }
+    },
+    {
+      "path": "ptx/docinject/95_CrossEntropyLoss/Qwen_Qwen3-Coder-30B-A3B-Instruct/sample_1.json",
+      "task": "95_CrossEntropyLoss",
+      "task_family": "loss",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "sample_index": 1,
+      "gen_status": "generated",
+      "compiled": false,
+      "correctness": false,
+      "metadata": {
+        "compilation_error_name": "NameError",
+        "compilation_error": "name 'nn' is not defined"
+      }
+    },
+    {
+      "path": "ptx/docinject/95_CrossEntropyLoss/Qwen_Qwen3-Coder-30B-A3B-Instruct/sample_2.json",
+      "task": "95_CrossEntropyLoss",
+      "task_family": "loss",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "sample_index": 2,
+      "gen_status": "generated",
+      "compiled": false,
+      "correctness": false,
+      "metadata": {
+        "compilation_error_name": "NameError",
+        "compilation_error": "name 'nn' is not defined"
+      }
+    },
+    {
+      "path": "ptx/docinject/95_CrossEntropyLoss/Qwen_Qwen3-Coder-30B-A3B-Instruct/sample_3.json",
+      "task": "95_CrossEntropyLoss",
+      "task_family": "loss",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "sample_index": 3,
+      "gen_status": "generated",
+      "compiled": false,
+      "correctness": false,
+      "metadata": {
+        "compilation_error_name": "NameError",
+        "compilation_error": "name 'nn' is not defined"
+      }
+    },
+    {
+      "path": "ptx/docinject/95_CrossEntropyLoss/Qwen_Qwen3-Coder-30B-A3B-Instruct/sample_4.json",
+      "task": "95_CrossEntropyLoss",
+      "task_family": "loss",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "sample_index": 4,
+      "gen_status": "generated",
+      "compiled": false,
+      "correctness": false,
+      "metadata": {
+        "compilation_error_name": "NameError",
+        "compilation_error": "name 'nn' is not defined"
+      }
+    },
+    {
+      "path": "ptx/docinject/95_CrossEntropyLoss/openai_gpt-oss-120b/sample_0.json",
+      "task": "95_CrossEntropyLoss",
+      "task_family": "loss",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "openai/gpt-oss-120b",
+      "sample_index": 0,
+      "gen_status": "generated",
+      "compiled": false,
+      "correctness": false,
+      "metadata": {
+        "compilation_error_name": "NameError",
+        "compilation_error": "name 'nn' is not defined"
+      }
+    },
+    {
+      "path": "ptx/docinject/95_CrossEntropyLoss/openai_gpt-oss-120b/sample_1.json",
+      "task": "95_CrossEntropyLoss",
+      "task_family": "loss",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "openai/gpt-oss-120b",
+      "sample_index": 1,
+      "gen_status": "generated",
+      "compiled": true,
+      "correctness": false,
+      "metadata": {
+        "runtime_error_name": "PTXCompileError",
+        "runtime_error": "ptxas /tmp/tmp836xz6a5/kernel.ptx, line 2; fatal   : Unsupported .version 8.7; current version is '8.5'\nptxas fatal   : Ptx assembly aborted due to errors\n"
+      }
+    },
+    {
+      "path": "ptx/docinject/95_CrossEntropyLoss/openai_gpt-oss-120b/sample_2.json",
+      "task": "95_CrossEntropyLoss",
+      "task_family": "loss",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "openai/gpt-oss-120b",
+      "sample_index": 2,
+      "gen_status": "generated",
+      "compiled": true,
+      "correctness": false,
+      "metadata": {
+        "runtime_error_name": "PTXCompileError",
+        "runtime_error": "ptxas /tmp/tmpbl043u85/kernel.ptx, line 2; fatal   : Unsupported .version 8.7; current version is '8.5'\nptxas fatal   : Ptx assembly aborted due to errors\n"
+      }
+    },
+    {
+      "path": "ptx/docinject/95_CrossEntropyLoss/openai_gpt-oss-120b/sample_3.json",
+      "task": "95_CrossEntropyLoss",
+      "task_family": "loss",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "openai/gpt-oss-120b",
+      "sample_index": 3,
+      "gen_status": "generated",
+      "compiled": true,
+      "correctness": false,
+      "metadata": {
+        "runtime_error_name": "PTXCompileError",
+        "runtime_error": "ptxas /tmp/tmpa0faxvk_/kernel.ptx, line 2; fatal   : Unsupported .version 8.7; current version is '8.5'\nptxas fatal   : Ptx assembly aborted due to errors\n"
+      }
+    },
+    {
+      "path": "ptx/docinject/95_CrossEntropyLoss/openai_gpt-oss-120b/sample_4.json",
+      "task": "95_CrossEntropyLoss",
+      "task_family": "loss",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "openai/gpt-oss-120b",
+      "sample_index": 4,
+      "gen_status": "generated",
+      "compiled": true,
+      "correctness": false,
+      "metadata": {
+        "runtime_error_name": "PTXCompileError",
+        "runtime_error": "ptxas /tmp/tmp4uxfiu5h/kernel.ptx, line 2; fatal   : Unsupported .version 8.7; current version is '8.5'\nptxas fatal   : Ptx assembly aborted due to errors\n"
+      }
+    },
+    {
+      "path": "ptx/docinject/97_ScaledDotProductAttention/Qwen_Qwen3-Coder-30B-A3B-Instruct/sample_0.json",
+      "task": "97_ScaledDotProductAttention",
+      "task_family": "attention",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "sample_index": 0,
+      "gen_status": "generated",
+      "compiled": false,
+      "correctness": false,
+      "metadata": {
+        "compilation_error_name": "NameError",
+        "compilation_error": "name 'nn' is not defined"
+      }
+    },
+    {
+      "path": "ptx/docinject/97_ScaledDotProductAttention/Qwen_Qwen3-Coder-30B-A3B-Instruct/sample_1.json",
+      "task": "97_ScaledDotProductAttention",
+      "task_family": "attention",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "sample_index": 1,
+      "gen_status": "generated",
+      "compiled": false,
+      "correctness": false,
+      "metadata": {
+        "compilation_error_name": "NameError",
+        "compilation_error": "name 'nn' is not defined"
+      }
+    },
+    {
+      "path": "ptx/docinject/97_ScaledDotProductAttention/Qwen_Qwen3-Coder-30B-A3B-Instruct/sample_2.json",
+      "task": "97_ScaledDotProductAttention",
+      "task_family": "attention",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "sample_index": 2,
+      "gen_status": "generated",
+      "compiled": false,
+      "correctness": false,
+      "metadata": {
+        "compilation_error_name": "NameError",
+        "compilation_error": "name 'nn' is not defined"
+      }
+    },
+    {
+      "path": "ptx/docinject/97_ScaledDotProductAttention/Qwen_Qwen3-Coder-30B-A3B-Instruct/sample_3.json",
+      "task": "97_ScaledDotProductAttention",
+      "task_family": "attention",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "sample_index": 3,
+      "gen_status": "generated",
+      "compiled": false,
+      "correctness": false,
+      "metadata": {
+        "compilation_error_name": "NameError",
+        "compilation_error": "name 'nn' is not defined"
+      }
+    },
+    {
+      "path": "ptx/docinject/97_ScaledDotProductAttention/Qwen_Qwen3-Coder-30B-A3B-Instruct/sample_4.json",
+      "task": "97_ScaledDotProductAttention",
+      "task_family": "attention",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "sample_index": 4,
+      "gen_status": "generated",
+      "compiled": false,
+      "correctness": false,
+      "metadata": {
+        "compilation_error_name": "NameError",
+        "compilation_error": "name 'nn' is not defined"
+      }
+    },
+    {
+      "path": "ptx/docinject/97_ScaledDotProductAttention/openai_gpt-oss-120b/sample_0.json",
+      "task": "97_ScaledDotProductAttention",
+      "task_family": "attention",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "openai/gpt-oss-120b",
+      "sample_index": 0,
+      "gen_status": "generated",
+      "compiled": true,
+      "correctness": false,
+      "metadata": {
+        "runtime_error_name": "PTXCompileError",
+        "runtime_error": "ptxas /tmp/tmpjw7o3m5k/kernel.ptx, line 2; fatal   : Unsupported .version 8.7; current version is '8.5'\nptxas fatal   : Ptx assembly aborted due to errors\n"
+      }
+    },
+    {
+      "path": "ptx/docinject/97_ScaledDotProductAttention/openai_gpt-oss-120b/sample_1.json",
+      "task": "97_ScaledDotProductAttention",
+      "task_family": "attention",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "openai/gpt-oss-120b",
+      "sample_index": 1,
+      "gen_status": "generated",
+      "compiled": false,
+      "correctness": false,
+      "metadata": {
+        "compilation_error_name": "NameError",
+        "compilation_error": "name 'nn' is not defined"
+      }
+    },
+    {
+      "path": "ptx/docinject/97_ScaledDotProductAttention/openai_gpt-oss-120b/sample_2.json",
+      "task": "97_ScaledDotProductAttention",
+      "task_family": "attention",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "openai/gpt-oss-120b",
+      "sample_index": 2,
+      "gen_status": "generated",
+      "compiled": true,
+      "correctness": false,
+      "metadata": {
+        "runtime_error_name": "PTXCompileError",
+        "runtime_error": "ptxas /tmp/tmpf8yrmw83/kernel.ptx, line 2; fatal   : Unsupported .version 8.7; current version is '8.5'\nptxas fatal   : Ptx assembly aborted due to errors\n"
+      }
+    },
+    {
+      "path": "ptx/docinject/97_ScaledDotProductAttention/openai_gpt-oss-120b/sample_3.json",
+      "task": "97_ScaledDotProductAttention",
+      "task_family": "attention",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "openai/gpt-oss-120b",
+      "sample_index": 3,
+      "gen_status": "truncated",
+      "compiled": false,
+      "correctness": false,
+      "eval_skipped_reason": "truncated"
+    },
+    {
+      "path": "ptx/docinject/97_ScaledDotProductAttention/openai_gpt-oss-120b/sample_4.json",
+      "task": "97_ScaledDotProductAttention",
+      "task_family": "attention",
+      "language": "ptx",
+      "condition": "docinject",
+      "model": "openai/gpt-oss-120b",
+      "sample_index": 4,
+      "gen_status": "generated",
+      "compiled": true,
+      "correctness": false,
+      "metadata": {
+        "runtime_error_name": "PTXCompileError",
+        "runtime_error": "ptxas /tmp/tmp5zokqliy/kernel.ptx, line 2; fatal   : Unsupported .version 8.7; current version is '8.5'\nptxas fatal   : Ptx assembly aborted due to errors\n"
+      }
+    }
+  ],
+  "status": "complete"
+}

@@ -1,0 +1,39 @@
+{
+  "task": "19_ReLU",
+  "task_family": "elementwise_activation",
+  "language": "tilelang",
+  "condition": "0shot",
+  "sample_index": 2,
+  "model": "openai/gpt-oss-120b",
+  "base_url": "http://localhost:8000/v1",
+  "hf_revision": "b5c939de8f754692c1647ca79fbf85e8c1e70f8a",
+  "vllm_version": "0.10.1",
+  "tensor_parallel_size": 1,
+  "temperature": 0.8,
+  "max_tokens": 8192,
+  "seed": 42002,
+  "timestamp": "2026-08-25T22:59:26+0900",
+  "prompt_sha256": "159fb3523ce61453ab6faf72c7856078051a8ae6b411f87e6e75ef9bdb8b3cad",
+  "prompt": "You are given a PyTorch reference implementation of a neural network operator.\nWrite a functionally equivalent GPU kernel in TileLang.\n\nRequirements:\n- All tensor inputs and outputs are float16 (fp16). Accumulation precision is\n  your choice unless the reference dictates otherwise.\n- Target GPU: NVIDIA RTX PRO 6000 Blackwell (compute capability 12.0).\n- Your kernel must be a drop-in replacement: same input shapes, same output\n  shapes and dtype as the reference.\n- Output ONLY the complete TileLang solution inside a single code block.\n  No explanation outside the code block.\n\nWrite a TileLang kernel (tilelang.jit / T.prim_func). Provide the full\nPython file defining ModelNew that calls your TileLang kernel.\n\nReference implementation:\n```python\nimport torch\nimport torch.nn as nn\n\nclass Model(nn.Module):\n    \"\"\"\n    Simple model that performs a ReLU activation.\n    \"\"\"\n    def __init__(self):\n        super(Model, self).__init__()\n    \n    def forward(self, x: torch.Tensor) -> torch.Tensor:\n        \"\"\"\n        Applies ReLU activation to the input tensor.\n\n        Args:\n            x (torch.Tensor): Input tensor of any shape.\n\n        Returns:\n            torch.Tensor: Output tensor with ReLU applied, same shape as input.\n        \"\"\"\n        return torch.relu(x)\n\nbatch_size = 4096\ndim = 393216\n\ndef get_inputs():\n    x = torch.rand(batch_size, dim)\n    return [x]\n\ndef get_init_inputs():\n    return []  # No special initialization inputs needed\n```\n",
+  "env": {
+    "torch_version": "2.5.1+cu121",
+    "cuda_version": "12.1",
+    "gpu_name": "NVIDIA A100 80GB PCIe",
+    "compute_capability": [
+      8,
+      0
+    ],
+    "driver_version": "535.309.01\n535.309.01"
+  },
+  "response_raw": "```python\n# model_new.py\nimport torch\nimport torch.nn as nn\nimport tvm\nfrom tvm import tir\nfrom tvm.script import tir as T\n\n# ------------------- TileLang (TVM TIR) kernel -------------------\n@T.prim_func\ndef relu_kernel(\n    A: T.Buffer[(T.int64(), T.int64()), \"float16\"],\n    B: T.Buffer[(T.int64(), T.int64()), \"float16\"],\n) -> None:\n    \"\"\"Element\u2011wise ReLU: B = max(A, 0)\"\"\"\n    T.func_attr({\"global_symbol\": \"relu_kernel\", \"tir.noalias\": True})\n    m = T.int64()\n    n = T.int64()\n    m, n = A.shape[0], A.shape[1]\n    total = m * n\n    for i in T.thread_binding(total, \"threadIdx\"):\n        a_val = A[i]\n        B[i] = T.max(a_val, T.float16(0.0))\n\n# ------------------- Python wrapper model -------------------\nclass ModelNew(nn.Module):\n    \"\"\"\n    Drop\u2011in replacement for the reference Model.\n    Executes a fused ReLU kernel on an RTX\u202fPRO\u202f6000 (SM 12.0) GPU.\n    \"\"\"\n    def __init__(self):\n        super().__init__()\n        # compile the kernel for the target GPU\n        target = tvm.target.Target(\"cuda -arch=sm_120\")\n        self.module = tvm.build(relu_kernel, target=target)\n\n    def forward(self, x: torch.Tensor) -> torch.Tensor:\n        # Ensure fp16 and GPU residency (the reference uses float32,\n        # but the kernel expects fp16 as required)\n        x = x.to(dtype=torch.float16, device=\"cuda\")\n        # Wrap torch tensor as TVM NDArray via DLPack\n        tvm_input = tvm.nd.from_dlpack(torch.utils.dlpack.to_dlpack(x))\n        # Allocate output TVM NDArray on the same device\n        tvm_out = tvm.nd.empty(\n            shape=x.shape,\n            dtype=\"float16\",\n            device=tvm.cuda(0)\n        )\n        # Launch the kernel\n        self.module[\"relu_kernel\"](tvm_input, tvm_out)\n        # Convert the result back to a torch Tensor\n        out = torch.utils.dlpack.from_dlpack(tvm_out.to_dlpack())\n        return out\n\n# ------------------- Helper functions matching the reference -------------------\ndef get_inputs():\n    batch_size = 4096\n    dim = 393216\n    x = torch.rand(batch_size, dim, dtype=torch.float32, device=\"cpu\")\n    return [x]\n\ndef get_init_inputs():\n    return []  # No special initialization inputs needed\n```",
+  "response_finish_reason": "stop",
+  "usage": {
+    "completion_tokens": 1462,
+    "prompt_tokens": 393,
+    "total_tokens": 1855,
+    "completion_tokens_details": null,
+    "prompt_tokens_details": null
+  },
+  "parsed_code": "# model_new.py\nimport torch\nimport torch.nn as nn\nimport tvm\nfrom tvm import tir\nfrom tvm.script import tir as T\n\n# ------------------- TileLang (TVM TIR) kernel -------------------\n@T.prim_func\ndef relu_kernel(\n    A: T.Buffer[(T.int64(), T.int64()), \"float16\"],\n    B: T.Buffer[(T.int64(), T.int64()), \"float16\"],\n) -> None:\n    \"\"\"Element\u2011wise ReLU: B = max(A, 0)\"\"\"\n    T.func_attr({\"global_symbol\": \"relu_kernel\", \"tir.noalias\": True})\n    m = T.int64()\n    n = T.int64()\n    m, n = A.shape[0], A.shape[1]\n    total = m * n\n    for i in T.thread_binding(total, \"threadIdx\"):\n        a_val = A[i]\n        B[i] = T.max(a_val, T.float16(0.0))\n\n# ------------------- Python wrapper model -------------------\nclass ModelNew(nn.Module):\n    \"\"\"\n    Drop\u2011in replacement for the reference Model.\n    Executes a fused ReLU kernel on an RTX\u202fPRO\u202f6000 (SM 12.0) GPU.\n    \"\"\"\n    def __init__(self):\n        super().__init__()\n        # compile the kernel for the target GPU\n        target = tvm.target.Target(\"cuda -arch=sm_120\")\n        self.module = tvm.build(relu_kernel, target=target)\n\n    def forward(self, x: torch.Tensor) -> torch.Tensor:\n        # Ensure fp16 and GPU residency (the reference uses float32,\n        # but the kernel expects fp16 as required)\n        x = x.to(dtype=torch.float16, device=\"cuda\")\n        # Wrap torch tensor as TVM NDArray via DLPack\n        tvm_input = tvm.nd.from_dlpack(torch.utils.dlpack.to_dlpack(x))\n        # Allocate output TVM NDArray on the same device\n        tvm_out = tvm.nd.empty(\n            shape=x.shape,\n            dtype=\"float16\",\n            device=tvm.cuda(0)\n        )\n        # Launch the kernel\n        self.module[\"relu_kernel\"](tvm_input, tvm_out)\n        # Convert the result back to a torch Tensor\n        out = torch.utils.dlpack.from_dlpack(tvm_out.to_dlpack())\n        return out\n\n# ------------------- Helper functions matching the reference -------------------\ndef get_inputs():\n    batch_size = 4096\n    dim = 393216\n    x = torch.rand(batch_size, dim, dtype=torch.float32, device=\"cpu\")\n    return [x]\n\ndef get_init_inputs():\n    return []  # No special initialization inputs needed\n",
+  "status": "generated"
+}
